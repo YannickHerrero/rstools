@@ -26,8 +26,10 @@ for finding things — this is for you.
 
 | Tool | Status | Description |
 |------|--------|-------------|
-| Hub | WIP | Main orchestrator — tool picker, tab switching, dashboard |
-| Todo | WIP | Minimalist todo list with search and filtering |
+| Hub | MVP | Main orchestrator — dashboard, tool picker, tab switching |
+| Todo | MVP | Minimalist todo list with vim navigation, filtering, CRUD |
+
+**Planned:** KeePass client, database viewer, and more.
 
 ## Building
 
@@ -47,7 +49,7 @@ The binary is `rstools`:
 
 | Key | Action |
 |-----|--------|
-| `Esc` | Return to Normal mode |
+| `Esc` | Return to Normal mode / cancel input |
 | `Ctrl-c` | Force quit |
 
 ### Normal Mode — Global
@@ -56,10 +58,14 @@ The binary is `rstools`:
 |-----|--------|
 | `<Space>` | Open which-key (leader menu) |
 | `<Space><Space>` | Tool picker (telescope) |
-| `<Space>ff` | Find (telescope fuzzy finder) |
+| `<Space>f` | Find (telescope fuzzy finder) |
+| `<Space>t` | Todo tool (switch or sub-menu) |
+| `<Space>q` | Quit |
 | `<Space>1-9` | Switch to tool by index |
 | `gt` / `gT` | Next / previous tool |
 | `:q` | Close current tool / quit |
+| `:qa` | Quit all |
+| `q` | Quit (from dashboard) |
 | `?` | Help |
 
 ### Normal Mode — List Navigation (all tools)
@@ -70,7 +76,7 @@ The binary is `rstools`:
 | `gg` | Go to top |
 | `G` | Go to bottom |
 | `Ctrl-d` / `Ctrl-u` | Half-page down / up |
-| `/` | Search / filter |
+| `/` | Search / filter within current view |
 | `Enter` | Confirm / select / toggle |
 | `dd` | Delete item |
 
@@ -78,36 +84,116 @@ The binary is `rstools`:
 
 | Key | Action |
 |-----|--------|
-| `<Space>ta` | Add new todo |
-| `a` | Add new todo (in todo view) |
-| `e` | Edit selected todo |
-| `o` | Add todo below current |
+| `a` | Add new todo (enters Insert mode) |
+| `o` | Add todo below current (enters Insert mode) |
+| `e` | Edit selected todo (enters Insert mode) |
 | `Enter` | Toggle completed |
 | `dd` | Delete todo |
-| `/` | Filter todos |
+| `/` | Filter todos (live search) |
+| `j` / `k` | Move down / up |
+| `gg` / `G` | Jump to top / bottom |
+
+### Insert Mode (text input)
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Submit input |
+| `Esc` | Cancel and return to Normal mode |
+| `Left` / `Right` | Move cursor |
+| `Backspace` | Delete character before cursor |
+
+### Telescope (fuzzy finder)
+
+| Key | Action |
+|-----|--------|
+| Type | Filter results |
+| `Tab` / `Down` | Move selection down |
+| `Shift-Tab` / `Up` | Move selection up |
+| `Enter` | Select item |
+| `Esc` | Close telescope |
+| `Backspace` | Delete search character |
 
 ## Architecture
 
 ```
 rstools/
+├── Cargo.toml               # Workspace root
 ├── crates/
-│   ├── rstools-core/    # Shared: vim keybinds, which-key, telescope, db, UI
-│   ├── rstools-hub/     # The orchestrator binary
-│   └── rstools-todo/    # Todo list tool
+│   ├── rstools-core/         # Shared: vim keybinds, which-key, telescope, db, UI
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── db.rs          # SQLite connection (WAL mode, XDG paths)
+│   │       ├── keybinds.rs    # Vim modes, multi-key sequences, Action enum
+│   │       ├── which_key.rs   # Leader key popup overlay
+│   │       ├── telescope.rs   # Fuzzy finder overlay
+│   │       ├── tool.rs        # Tool trait (every tool implements this)
+│   │       └── ui.rs          # Shared UI: tab bar, status bar, command line
+│   ├── rstools-hub/          # The orchestrator binary
+│   │   └── src/
+│   │       ├── main.rs        # Entry point, terminal setup, event loop
+│   │       └── app.rs         # App state, tool registry, event routing
+│   └── rstools-todo/         # Todo list tool
+│       └── src/
+│           ├── lib.rs         # Tool trait impl, input handling, state
+│           ├── model.rs       # Todo struct, SQLite CRUD operations
+│           └── ui.rs          # Todo list and input rendering
 ```
 
+### How it works
+
 - **rstools-core** — every tool depends on this. It provides the `Tool` trait,
-  vim-style input handling, which-key popup, telescope overlay, database
-  connection, and shared UI components.
-- **rstools-hub** — the only binary. It manages a registry of tools and renders
-  them as embedded views.
+  vim-style input handling with multi-key sequences (`gg`, `dd`, `gt`), the
+  which-key popup, telescope overlay, database connection, and shared UI
+  components (tab bar, status bar, command line).
+
+- **rstools-hub** — the only binary. It owns the event loop, manages a registry
+  of tools, routes key events to the active tool, and renders everything. Tools
+  are embedded views — switching between them is instant, like switching buffers
+  in neovim.
+
 - **rstools-todo** (and future tools) — library crates that implement the `Tool`
-  trait and provide their own UI and data models.
+  trait. Each tool manages its own state, handles its own keybinds (delegating
+  global ones back to the hub via the `Action` enum), renders its own UI, and
+  owns its own database tables.
+
+### Adding a new tool
+
+1. Create `crates/rstools-<name>/` with `Cargo.toml`
+2. Implement the `Tool` trait from `rstools-core`
+3. Add database migration in the tool's `init_db()` method
+4. Register the tool in `rstools-hub/src/main.rs`
+5. Add which-key bindings (mandatory)
+6. Update `AGENTS.md` and `README.md`
 
 ## Data Storage
 
-All data lives in `~/.local/share/rstools/rstools.db` (XDG-compliant). Each tool
-manages its own tables. Back up this single file to back up everything.
+All data lives in `~/.local/share/rstools/rstools.db` (XDG-compliant on Linux).
+SQLite with WAL mode and foreign keys enabled. Each tool manages its own tables.
+Back up this single file to back up everything.
+
+### Todo schema
+
+```sql
+CREATE TABLE todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    completed BOOLEAN NOT NULL DEFAULT 0,
+    description TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+## Dependencies
+
+| Crate | Version | Purpose |
+|-------|---------|---------|
+| ratatui | 0.30 | TUI rendering framework |
+| crossterm | 0.29 | Terminal backend (input/output) |
+| rusqlite | 0.38 | SQLite database (bundled) |
+| chrono | 0.4 | Timestamps |
+| directories | 6 | XDG-compliant data paths |
+| anyhow | 1 | Error handling |
 
 ## License
 
