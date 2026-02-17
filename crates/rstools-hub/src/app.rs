@@ -70,6 +70,13 @@ impl App {
         Ok(())
     }
 
+    /// Tick the active tool (called every ~50ms for async polling, animations, etc.).
+    pub fn tick(&mut self) {
+        if let Some(idx) = self.active_tool {
+            self.tools[idx].tick();
+        }
+    }
+
     /// Handle a terminal event.
     pub fn handle_event(&mut self, event: Event) {
         if let Event::Key(key) = event {

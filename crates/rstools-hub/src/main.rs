@@ -1,6 +1,7 @@
 mod app;
 
 use std::io;
+use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::{
@@ -59,6 +60,8 @@ fn main() -> Result<()> {
 }
 
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> Result<()> {
+    const TICK_RATE: Duration = Duration::from_millis(50);
+
     loop {
         terminal.draw(|frame| {
             app.render(frame);
@@ -68,8 +71,13 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
             return Ok(());
         }
 
-        // Block until an event arrives
-        let ev = event::read()?;
-        app.handle_event(ev);
+        // Poll with timeout so we can tick tools for async operations
+        if event::poll(TICK_RATE)? {
+            let ev = event::read()?;
+            app.handle_event(ev);
+        }
+
+        // Tick the active tool (spinner animations, async polling, etc.)
+        app.tick();
     }
 }

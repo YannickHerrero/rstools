@@ -51,6 +51,10 @@ pub trait Tool {
     /// Called by the hub when it takes over input (overlays open/close).
     fn reset_key_state(&mut self) {}
 
+    /// Called on each tick of the event loop (approximately every 50ms).
+    /// Use this for async polling, spinner animations, etc.
+    fn tick(&mut self) {}
+
     /// Called when the tool becomes the active view.
     fn on_focus(&mut self) {}
 
