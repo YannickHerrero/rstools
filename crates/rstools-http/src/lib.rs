@@ -14,14 +14,20 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{layout::Rect, Frame};
 use rusqlite::Connection;
 
+use executor::{HttpExecutor, HttpRequestCmd};
 use model::EntryType;
+use request_panel::{KvField, PanelFocus, RequestPanel, ResponseData, ResponseSection, Section};
 use sidebar::{ClipboardMode, SidebarInput, SidebarState};
 
 pub struct HttpTool {
     sidebar: SidebarState,
+    panel: RequestPanel,
     mode: InputMode,
     key_state: KeyState,
     conn: Connection,
+    executor: HttpExecutor,
+    /// Whether the sidebar is focused (vs content panel).
+    sidebar_focused: bool,
 }
 
 impl HttpTool {
@@ -29,12 +35,91 @@ impl HttpTool {
         model::init_db(&conn)?;
         let mut sidebar = SidebarState::new();
         sidebar.reload(&conn)?;
+        let executor = HttpExecutor::spawn();
         Ok(Self {
             sidebar,
+            panel: RequestPanel::new(),
             mode: InputMode::Normal,
             key_state: KeyState::default(),
             conn,
+            executor,
+            sidebar_focused: true,
         })
+    }
+
+    /// Send the current request via the executor.
+    fn send_request(&mut self) {
+        if !self.panel.is_active() || self.panel.request_in_flight {
+            return;
+        }
+
+        let url = self.panel.build_url_with_params();
+        if url.is_empty() {
+            self.panel.error_message = Some("URL is empty".to_string());
+            return;
+        }
+
+        let cmd = HttpRequestCmd {
+            method: self.panel.method,
+            url,
+            headers: self.panel.enabled_headers(),
+            body: self.panel.body_text(),
+        };
+
+        if self.executor.send(cmd).is_ok() {
+            self.panel.request_in_flight = true;
+            self.panel.error_message = None;
+            self.panel.response = None;
+            self.panel.spinner_frame = 0;
+        }
+    }
+
+    /// Check for async response results.
+    fn poll_response(&mut self) {
+        if let Some(result) = self.executor.try_recv() {
+            self.panel.request_in_flight = false;
+            match result {
+                Ok(resp) => {
+                    // Pretty-print JSON if possible
+                    let body = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&resp.body) {
+                        serde_json::to_string_pretty(&json).unwrap_or(resp.body)
+                    } else {
+                        resp.body
+                    };
+
+                    self.panel.response = Some(ResponseData {
+                        status_code: resp.status_code,
+                        status_text: resp.status_text,
+                        elapsed_ms: resp.elapsed_ms,
+                        size_bytes: resp.size_bytes,
+                        headers: resp.headers,
+                        body,
+                        body_scroll: 0,
+                        headers_scroll: 0,
+                        focused_section: ResponseSection::Body,
+                    });
+                    self.panel.error_message = None;
+                }
+                Err(e) => {
+                    self.panel.error_message = Some(e.message);
+                }
+            }
+        }
+    }
+
+    /// Open a query in the content panel.
+    fn open_query(&mut self, entry_id: i64, name: &str) {
+        let _ = self.panel.load(entry_id, name, &self.conn);
+        self.sidebar_focused = false;
+    }
+
+    /// Save the current panel to the database.
+    fn save_panel(&mut self) -> bool {
+        if self.panel.is_active() {
+            self.panel.save(&self.conn).is_ok()
+        } else {
+            false
+        }
     }
 
     /// Handle key events when the sidebar is focused in Normal mode.
@@ -94,12 +179,15 @@ impl HttpTool {
                 Action::None
             }
             KeyCode::Enter => {
-                // Enter toggles folder expand/collapse
                 if let Some(entry) = self.sidebar.selected_entry() {
                     if entry.entry_type == EntryType::Folder {
                         self.sidebar.toggle_expand();
+                    } else {
+                        // Open query in the content panel
+                        let id = entry.entry_id;
+                        let name = entry.name.clone();
+                        self.open_query(id, &name);
                     }
-                    // For queries, this would open them in the main panel (future)
                 }
                 Action::None
             }
@@ -388,6 +476,546 @@ impl HttpTool {
         self.expand_path_to_parent(target_parent_id);
     }
 
+    // ── Content panel key handling ─────────────────────────────────
+
+    /// Handle key events when the content panel is focused in Normal mode.
+    fn handle_panel_normal_key(&mut self, key: KeyEvent) -> Action {
+        // Handle pending two-key sequences first
+        if self.key_state.leader_active {
+            self.key_state.leader_active = false;
+            return match key.code {
+                KeyCode::Char(' ') => Action::ToolPicker,
+                KeyCode::Char('f') => Action::Telescope,
+                KeyCode::Char('s') => {
+                    self.send_request();
+                    Action::None
+                }
+                KeyCode::Char(c @ '1'..='9') => {
+                    let idx = (c as u8 - b'1') as usize;
+                    Action::SwitchTool(idx)
+                }
+                KeyCode::Char('q') => Action::Quit,
+                KeyCode::Char(c) => Action::LeaderSequence(c),
+                KeyCode::Esc => Action::None,
+                _ => Action::None,
+            };
+        }
+
+        if let Some(pending) = self.key_state.pending_key.take() {
+            return match (pending, key.code) {
+                ('g', KeyCode::Char('g')) => {
+                    self.panel_goto_top();
+                    Action::None
+                }
+                ('g', KeyCode::Char('t')) => Action::NextTool,
+                ('g', KeyCode::Char('T')) => Action::PrevTool,
+                ('d', KeyCode::Char('d')) => {
+                    // Delete row in kv sections
+                    match self.panel.focused_section {
+                        Section::Headers | Section::Params => self.panel.kv_delete_row(),
+                        _ => {}
+                    }
+                    Action::None
+                }
+                _ => Action::None,
+            };
+        }
+
+        // Ctrl-Enter sends request from anywhere
+        if key.code == KeyCode::Enter
+            && key.modifiers.contains(KeyModifiers::CONTROL)
+        {
+            self.send_request();
+            return Action::None;
+        }
+
+        // Ctrl-h/j/k/l for section navigation
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            match key.code {
+                KeyCode::Char('j') => {
+                    // Move focus down: request sections -> response
+                    if self.panel.panel_focus == PanelFocus::Request {
+                        if self.panel.focused_section == Section::Body {
+                            self.panel.focus_response();
+                        } else {
+                            self.panel.next_section();
+                        }
+                    }
+                    return Action::None;
+                }
+                KeyCode::Char('k') => {
+                    // Move focus up: response -> request sections
+                    if self.panel.panel_focus == PanelFocus::Response {
+                        self.panel.focus_request();
+                    } else if self.panel.focused_section != Section::Url {
+                        self.panel.prev_section();
+                    } else {
+                        // At URL, Ctrl-k could move to sidebar
+                        self.sidebar_focused = true;
+                    }
+                    return Action::None;
+                }
+                KeyCode::Char('h') => {
+                    // Move focus to sidebar
+                    self.sidebar_focused = true;
+                    return Action::None;
+                }
+                KeyCode::Char('l') => {
+                    // Already in content panel, no-op
+                    return Action::None;
+                }
+                KeyCode::Char('d') => {
+                    // Half page down in response body
+                    if self.panel.panel_focus == PanelFocus::Response {
+                        if let Some(ref mut resp) = self.panel.response {
+                            resp.scroll_body_down(10);
+                        }
+                    }
+                    return Action::None;
+                }
+                KeyCode::Char('u') => {
+                    // Half page up in response body
+                    if self.panel.panel_focus == PanelFocus::Response {
+                        if let Some(ref mut resp) = self.panel.response {
+                            resp.scroll_body_up(10);
+                        }
+                    }
+                    return Action::None;
+                }
+                _ => {}
+            }
+        }
+
+        // Response-focused keys
+        if self.panel.panel_focus == PanelFocus::Response {
+            return self.handle_response_key(key);
+        }
+
+        // Request section-specific keys
+        match self.panel.focused_section {
+            Section::Url => self.handle_url_normal_key(key),
+            Section::Params | Section::Headers => self.handle_kv_normal_key(key),
+            Section::Body => self.handle_body_normal_key(key),
+        }
+    }
+
+    fn handle_url_normal_key(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Char('i') => {
+                self.panel.editing = true;
+                self.panel.url_cursor_end();
+                self.mode = InputMode::Insert;
+                Action::None
+            }
+            KeyCode::Char('I') => {
+                self.panel.editing = true;
+                self.panel.url_cursor_home();
+                self.mode = InputMode::Insert;
+                Action::None
+            }
+            KeyCode::Char('a') => {
+                self.panel.editing = true;
+                self.panel.url_cursor_end();
+                self.mode = InputMode::Insert;
+                Action::None
+            }
+            KeyCode::Char('m') | KeyCode::Char('M') => {
+                if key.code == KeyCode::Char('M') {
+                    self.panel.cycle_method_backward();
+                } else {
+                    self.panel.cycle_method_forward();
+                }
+                Action::None
+            }
+            KeyCode::Tab => {
+                self.panel.next_section();
+                Action::None
+            }
+            KeyCode::BackTab => {
+                self.panel.prev_section();
+                Action::None
+            }
+            // Hub-level
+            KeyCode::Char(' ') => {
+                self.key_state.leader_active = true;
+                Action::LeaderKey
+            }
+            KeyCode::Char('g') => {
+                self.key_state.pending_key = Some('g');
+                Action::None
+            }
+            KeyCode::Char(':') => Action::SetMode(InputMode::Command),
+            KeyCode::Char('?') => Action::Help,
+            KeyCode::Char('q') => Action::Quit,
+            _ => Action::None,
+        }
+    }
+
+    fn handle_kv_normal_key(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Char('j') => {
+                self.panel.kv_move_down();
+                Action::None
+            }
+            KeyCode::Char('k') => {
+                self.panel.kv_move_up();
+                Action::None
+            }
+            KeyCode::Char('G') => {
+                self.panel.kv_goto_bottom();
+                Action::None
+            }
+            KeyCode::Char('g') => {
+                self.key_state.pending_key = Some('g');
+                Action::None
+            }
+            KeyCode::Char('d') => {
+                self.key_state.pending_key = Some('d');
+                Action::None
+            }
+            KeyCode::Char('a') => {
+                self.panel.kv_add_row();
+                self.panel.editing_field = KvField::Key;
+                self.panel.kv_start_edit();
+                self.mode = InputMode::Insert;
+                Action::None
+            }
+            KeyCode::Char('i') | KeyCode::Enter => {
+                self.panel.editing_field = KvField::Key;
+                self.panel.kv_start_edit();
+                self.mode = InputMode::Insert;
+                Action::None
+            }
+            KeyCode::Char('x') => {
+                // Toggle enabled
+                self.panel.kv_toggle_enabled();
+                Action::None
+            }
+            KeyCode::Char(' ') => {
+                self.key_state.leader_active = true;
+                Action::LeaderKey
+            }
+            KeyCode::Tab => {
+                self.panel.next_section();
+                Action::None
+            }
+            KeyCode::BackTab => {
+                self.panel.prev_section();
+                Action::None
+            }
+            KeyCode::Char(':') => Action::SetMode(InputMode::Command),
+            KeyCode::Char('?') => Action::Help,
+            KeyCode::Char('q') => Action::Quit,
+            _ => Action::None,
+        }
+    }
+
+    fn handle_body_normal_key(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Char('i') => {
+                self.panel.editing = true;
+                self.mode = InputMode::Insert;
+                Action::None
+            }
+            KeyCode::Char('a') => {
+                self.panel.editing = true;
+                self.panel.body_cursor_right();
+                self.mode = InputMode::Insert;
+                Action::None
+            }
+            KeyCode::Char('A') => {
+                self.panel.editing = true;
+                self.panel.body_cursor_end();
+                self.mode = InputMode::Insert;
+                Action::None
+            }
+            KeyCode::Char('I') => {
+                self.panel.editing = true;
+                self.panel.body_cursor_home();
+                self.mode = InputMode::Insert;
+                Action::None
+            }
+            KeyCode::Char('o') => {
+                // Insert line below
+                self.panel.body_cursor_end();
+                self.panel.body_insert_newline();
+                self.panel.editing = true;
+                self.mode = InputMode::Insert;
+                Action::None
+            }
+            KeyCode::Char('O') => {
+                // Insert line above
+                self.panel.body_cursor_home();
+                self.panel.body_insert_newline();
+                self.panel.body_cursor_up();
+                self.panel.editing = true;
+                self.mode = InputMode::Insert;
+                Action::None
+            }
+            KeyCode::Char('j') => {
+                self.panel.body_cursor_down();
+                Action::None
+            }
+            KeyCode::Char('k') => {
+                self.panel.body_cursor_up();
+                Action::None
+            }
+            KeyCode::Char('h') => {
+                self.panel.body_cursor_left();
+                Action::None
+            }
+            KeyCode::Char('l') => {
+                self.panel.body_cursor_right();
+                Action::None
+            }
+            KeyCode::Char('0') => {
+                self.panel.body_cursor_home();
+                Action::None
+            }
+            KeyCode::Char('$') => {
+                self.panel.body_cursor_end();
+                Action::None
+            }
+            KeyCode::Char('G') => {
+                self.panel.body_goto_bottom();
+                Action::None
+            }
+            KeyCode::Char('g') => {
+                self.key_state.pending_key = Some('g');
+                Action::None
+            }
+            KeyCode::Tab => {
+                self.panel.next_section();
+                Action::None
+            }
+            KeyCode::BackTab => {
+                self.panel.prev_section();
+                Action::None
+            }
+            KeyCode::Char(' ') => {
+                self.key_state.leader_active = true;
+                Action::LeaderKey
+            }
+            KeyCode::Char(':') => Action::SetMode(InputMode::Command),
+            KeyCode::Char('?') => Action::Help,
+            KeyCode::Char('q') => Action::Quit,
+            _ => Action::None,
+        }
+    }
+
+    fn handle_response_key(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Char('j') => {
+                if let Some(ref mut resp) = self.panel.response {
+                    match resp.focused_section {
+                        ResponseSection::Body => resp.scroll_body_down(1),
+                        ResponseSection::Headers => resp.scroll_headers_down(1),
+                    }
+                }
+                Action::None
+            }
+            KeyCode::Char('k') => {
+                if let Some(ref mut resp) = self.panel.response {
+                    match resp.focused_section {
+                        ResponseSection::Body => resp.scroll_body_up(1),
+                        ResponseSection::Headers => resp.scroll_headers_up(1),
+                    }
+                }
+                Action::None
+            }
+            KeyCode::Char('G') => {
+                if let Some(ref mut resp) = self.panel.response {
+                    match resp.focused_section {
+                        ResponseSection::Body => {
+                            let max = resp.body_line_count().saturating_sub(1);
+                            resp.body_scroll = max;
+                        }
+                        ResponseSection::Headers => {
+                            resp.headers_scroll = resp.headers.len().saturating_sub(1);
+                        }
+                    }
+                }
+                Action::None
+            }
+            KeyCode::Char('g') => {
+                self.key_state.pending_key = Some('g');
+                Action::None
+            }
+            KeyCode::Tab | KeyCode::BackTab => {
+                if let Some(ref mut resp) = self.panel.response {
+                    resp.toggle_section();
+                }
+                Action::None
+            }
+            KeyCode::Char(' ') => {
+                self.key_state.leader_active = true;
+                Action::LeaderKey
+            }
+            KeyCode::Char(':') => Action::SetMode(InputMode::Command),
+            KeyCode::Char('?') => Action::Help,
+            KeyCode::Char('q') => Action::Quit,
+            _ => Action::None,
+        }
+    }
+
+    /// Handle keys in Insert mode for the content panel.
+    fn handle_panel_insert_key(&mut self, key: KeyEvent) -> Action {
+        // Ctrl-Enter sends from insert mode too
+        if key.code == KeyCode::Enter && key.modifiers.contains(KeyModifiers::CONTROL) {
+            self.send_request();
+            return Action::None;
+        }
+
+        match key.code {
+            KeyCode::Esc => {
+                self.panel.editing = false;
+                self.panel.kv_stop_edit();
+                self.mode = InputMode::Normal;
+                Action::SetMode(InputMode::Normal)
+            }
+            _ => {
+                match self.panel.focused_section {
+                    Section::Url => self.handle_url_insert_key(key),
+                    Section::Params | Section::Headers => self.handle_kv_insert_key(key),
+                    Section::Body => self.handle_body_insert_key(key),
+                }
+            }
+        }
+    }
+
+    fn handle_url_insert_key(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Char(c) => {
+                self.panel.url_insert_char(c);
+                Action::None
+            }
+            KeyCode::Backspace => {
+                self.panel.url_backspace();
+                Action::None
+            }
+            KeyCode::Delete => {
+                self.panel.url_delete();
+                Action::None
+            }
+            KeyCode::Left => {
+                self.panel.url_cursor_left();
+                Action::None
+            }
+            KeyCode::Right => {
+                self.panel.url_cursor_right();
+                Action::None
+            }
+            KeyCode::Home => {
+                self.panel.url_cursor_home();
+                Action::None
+            }
+            KeyCode::End => {
+                self.panel.url_cursor_end();
+                Action::None
+            }
+            _ => Action::None,
+        }
+    }
+
+    fn handle_kv_insert_key(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Char(c) => {
+                self.panel.kv_insert_char(c);
+                Action::None
+            }
+            KeyCode::Backspace => {
+                self.panel.kv_backspace();
+                Action::None
+            }
+            KeyCode::Left => {
+                self.panel.kv_cursor_left();
+                Action::None
+            }
+            KeyCode::Right => {
+                self.panel.kv_cursor_right();
+                Action::None
+            }
+            KeyCode::Tab => {
+                self.panel.kv_toggle_field();
+                Action::None
+            }
+            KeyCode::Enter => {
+                // Finish editing this row
+                self.panel.kv_stop_edit();
+                self.panel.editing = false;
+                self.mode = InputMode::Normal;
+                Action::SetMode(InputMode::Normal)
+            }
+            _ => Action::None,
+        }
+    }
+
+    fn handle_body_insert_key(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Char(c) => {
+                self.panel.body_insert_char(c);
+                Action::None
+            }
+            KeyCode::Enter => {
+                self.panel.body_insert_newline();
+                Action::None
+            }
+            KeyCode::Backspace => {
+                self.panel.body_backspace();
+                Action::None
+            }
+            KeyCode::Delete => {
+                self.panel.body_delete();
+                Action::None
+            }
+            KeyCode::Left => {
+                self.panel.body_cursor_left();
+                Action::None
+            }
+            KeyCode::Right => {
+                self.panel.body_cursor_right();
+                Action::None
+            }
+            KeyCode::Up => {
+                self.panel.body_cursor_up();
+                Action::None
+            }
+            KeyCode::Down => {
+                self.panel.body_cursor_down();
+                Action::None
+            }
+            KeyCode::Home => {
+                self.panel.body_cursor_home();
+                Action::None
+            }
+            KeyCode::End => {
+                self.panel.body_cursor_end();
+                Action::None
+            }
+            _ => Action::None,
+        }
+    }
+
+    fn panel_goto_top(&mut self) {
+        match self.panel.panel_focus {
+            PanelFocus::Request => {
+                match self.panel.focused_section {
+                    Section::Headers | Section::Params => self.panel.kv_goto_top(),
+                    Section::Body => self.panel.body_goto_top(),
+                    _ => {}
+                }
+            }
+            PanelFocus::Response => {
+                if let Some(ref mut resp) = self.panel.response {
+                    match resp.focused_section {
+                        ResponseSection::Body => resp.body_scroll = 0,
+                        ResponseSection::Headers => resp.headers_scroll = 0,
+                    }
+                }
+            }
+        }
+    }
+
     /// Collect all queries as telescope items.
     fn collect_telescope_items(&self) -> Vec<TelescopeItem> {
         let mut items = Vec::new();
@@ -463,34 +1091,56 @@ impl Tool for HttpTool {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Action {
-        // If sidebar is not visible, only handle leader key to re-open it
-        if !self.sidebar.visible {
-            let action = process_normal_key(key, &mut self.key_state);
-            return match action {
-                // Bubble hub-level actions
-                Action::Quit
-                | Action::LeaderKey
-                | Action::LeaderSequence(_)
-                | Action::SwitchTool(_)
-                | Action::NextTool
-                | Action::PrevTool
-                | Action::ToolPicker
-                | Action::Telescope
-                | Action::Help
-                | Action::SetMode(_) => action,
-                _ => Action::None,
-            };
-        }
-
         match self.mode {
             InputMode::Normal => {
-                // Check if in confirm delete mode
-                if self.sidebar.input_mode == SidebarInput::ConfirmDelete {
-                    return self.handle_confirm_delete_key(key);
+                if self.sidebar.visible && self.sidebar_focused {
+                    // Sidebar is focused
+                    if self.sidebar.input_mode == SidebarInput::ConfirmDelete {
+                        return self.handle_confirm_delete_key(key);
+                    }
+
+                    // Allow Ctrl-l to move from sidebar to panel
+                    if key.code == KeyCode::Char('l')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        if self.panel.is_active() {
+                            self.sidebar_focused = false;
+                        }
+                        return Action::None;
+                    }
+
+                    self.handle_sidebar_normal_key(key)
+                } else if self.panel.is_active() {
+                    // Content panel is focused
+                    self.handle_panel_normal_key(key)
+                } else {
+                    // No panel active, handle basic navigation
+                    let action = process_normal_key(key, &mut self.key_state);
+                    match action {
+                        Action::Quit
+                        | Action::LeaderKey
+                        | Action::LeaderSequence(_)
+                        | Action::SwitchTool(_)
+                        | Action::NextTool
+                        | Action::PrevTool
+                        | Action::ToolPicker
+                        | Action::Telescope
+                        | Action::Help
+                        | Action::SetMode(_) => action,
+                        _ => Action::None,
+                    }
                 }
-                self.handle_sidebar_normal_key(key)
             }
-            InputMode::Insert => self.handle_sidebar_insert_key(key),
+            InputMode::Insert => {
+                if self.sidebar.visible
+                    && self.sidebar_focused
+                    && self.sidebar.input_mode != SidebarInput::None
+                {
+                    self.handle_sidebar_insert_key(key)
+                } else {
+                    self.handle_panel_insert_key(key)
+                }
+            }
             InputMode::Command => {
                 // Command mode is handled by the hub
                 Action::None
@@ -502,6 +1152,13 @@ impl Tool for HttpTool {
         match key {
             'e' => {
                 self.sidebar.visible = !self.sidebar.visible;
+                if self.sidebar.visible {
+                    self.sidebar_focused = true;
+                }
+                Some(Action::None)
+            }
+            's' => {
+                self.send_request();
                 Some(Action::None)
             }
             _ => None,
@@ -509,7 +1166,12 @@ impl Tool for HttpTool {
     }
 
     fn render(&self, frame: &mut Frame, area: Rect) {
-        ui::render_http_tool(frame, area, &self.sidebar);
+        ui::render_http_tool(frame, area, &self.sidebar, &self.panel, self.sidebar_focused);
+    }
+
+    fn tick(&mut self) {
+        self.poll_response();
+        self.panel.tick_spinner();
     }
 
     fn reset_key_state(&mut self) {
@@ -518,6 +1180,13 @@ impl Tool for HttpTool {
 
     fn on_focus(&mut self) {
         let _ = self.sidebar.reload(&self.conn);
+    }
+
+    fn handle_command(&mut self, cmd: &str) -> bool {
+        match cmd.trim() {
+            "w" | "write" => self.save_panel(),
+            _ => false,
+        }
     }
 }
 

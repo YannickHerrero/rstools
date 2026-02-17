@@ -386,6 +386,13 @@ impl App {
 
     /// Execute a command-mode command.
     fn execute_command(&mut self, cmd: &str) {
+        // First, let the active tool try to handle it
+        if let Some(idx) = self.active_tool {
+            if self.tools[idx].handle_command(cmd) {
+                return;
+            }
+        }
+
         match cmd {
             "q" | "quit" => {
                 if self.active_tool.is_some() {

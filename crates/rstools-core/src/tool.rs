@@ -55,6 +55,11 @@ pub trait Tool {
     /// Use this for async polling, spinner animations, etc.
     fn tick(&mut self) {}
 
+    /// Handle a command-mode command (e.g., ":w"). Returns true if handled.
+    fn handle_command(&mut self, _cmd: &str) -> bool {
+        false
+    }
+
     /// Called when the tool becomes the active view.
     fn on_focus(&mut self) {}
 

@@ -378,15 +378,6 @@ impl RequestPanel {
 
     // ── Key-value (headers / params) editing ─────────────────────────
 
-    /// Returns references to the active kv list and selected index based on focused section.
-    fn kv_parts(&self) -> (&Vec<KvRow>, usize) {
-        match self.focused_section {
-            Section::Headers => (&self.headers, self.headers_selected),
-            Section::Params => (&self.query_params, self.params_selected),
-            _ => (&self.headers, self.headers_selected), // fallback
-        }
-    }
-
     /// Access the active kv row mutably.
     fn kv_selected_row_mut(&mut self) -> Option<&mut KvRow> {
         match self.focused_section {
