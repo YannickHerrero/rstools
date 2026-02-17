@@ -186,16 +186,16 @@ fn render_entry_line(
         }
     }
 
-    // Icon
+    // Icon: ▼ for expanded folder, ▶ for collapsed folder, ● for query
     let icon: &str = match entry.entry_type {
         crate::model::EntryType::Folder => {
             if entry.is_expanded {
-                " "
+                "\u{25BC} "
             } else {
-                " "
+                "\u{25B6} "
             }
         }
-        crate::model::EntryType::Query => "● ",
+        crate::model::EntryType::Query => "\u{25CF} ",
     };
     spans.push(Span::styled(icon.to_string(), base_style));
 

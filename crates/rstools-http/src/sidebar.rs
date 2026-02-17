@@ -373,17 +373,18 @@ fn sort_tree(nodes: &mut Vec<TreeNode>) {
 }
 
 /// Flatten visible tree nodes into a list for rendering.
-/// `parent_guides` tracks whether each ancestor depth level has more siblings
-/// below, so we know where to draw vertical guide lines (│).
+/// `parent_guides` tracks whether each ancestor depth level has an expanded
+/// folder, so we know where to draw vertical indent guide lines (│).
+/// A guide line is drawn at a depth whenever an ancestor folder at that depth
+/// is expanded and its children are being shown — this visually connects
+/// children to their parent regardless of whether the parent has more siblings.
 fn flatten_tree(
     nodes: &[TreeNode],
     depth: usize,
     parent_guides: &[bool],
     out: &mut Vec<FlatEntry>,
 ) {
-    for (i, node) in nodes.iter().enumerate() {
-        let has_more_siblings = i < nodes.len() - 1;
-
+    for node in nodes.iter() {
         // Build guide_depths for this entry: inherit parent guides
         let guide_depths = parent_guides.to_vec();
 
@@ -397,11 +398,11 @@ fn flatten_tree(
             guide_depths,
         });
 
-        if node.expanded {
-            // For children, extend the guides: this node's depth gets a guide
-            // line if this node has more siblings after it.
+        if node.expanded && !node.children.is_empty() {
+            // For children, extend the guides: this node's depth always gets
+            // a guide line to visually show the indentation/structure.
             let mut child_guides = parent_guides.to_vec();
-            child_guides.push(has_more_siblings);
+            child_guides.push(true);
             flatten_tree(&node.children, depth + 1, &child_guides, out);
         }
     }
@@ -607,12 +608,12 @@ mod tests {
         sidebar.selected = 1; // sub
         sidebar.toggle_expand();
 
-        // Expected flat view:
+        // Expected flat view (guides always true for children of expanded folders):
         // 0: a-folder          depth=0, guides=[]
-        // 1:   sub              depth=1, guides=[true]  (a-folder has more siblings: b-query)
-        // 2:     query-1        depth=2, guides=[true, true]  (sub has sibling: query-3)
-        // 3:     query-2        depth=2, guides=[true, true]
-        // 4:   query-3          depth=1, guides=[true]
+        // 1: │ sub              depth=1, guides=[true]
+        // 2: │ │ query-1        depth=2, guides=[true, true]
+        // 3: │ │ query-2        depth=2, guides=[true, true]
+        // 4: │ query-3          depth=1, guides=[true]
         // 5: b-query            depth=0, guides=[]
 
         assert_eq!(sidebar.flat_view.len(), 6);
@@ -620,16 +621,16 @@ mod tests {
         // a-folder: depth 0, no guides
         assert_eq!(sidebar.flat_view[0].guide_depths, Vec::<bool>::new());
 
-        // sub: depth 1, parent (a-folder) has more siblings (b-query) → [true]
+        // sub: depth 1, child of expanded a-folder → [true]
         assert_eq!(sidebar.flat_view[1].guide_depths, vec![true]);
 
-        // query-1: depth 2, grandparent has more siblings [true], parent (sub) has sibling (query-3) [true]
+        // query-1: depth 2, both ancestors expanded → [true, true]
         assert_eq!(sidebar.flat_view[2].guide_depths, vec![true, true]);
 
         // query-2: depth 2, same guides
         assert_eq!(sidebar.flat_view[3].guide_depths, vec![true, true]);
 
-        // query-3: depth 1, parent (a-folder) has more siblings [true]
+        // query-3: depth 1, child of expanded a-folder → [true]
         assert_eq!(sidebar.flat_view[4].guide_depths, vec![true]);
 
         // b-query: depth 0, no guides
@@ -648,8 +649,9 @@ mod tests {
         sidebar.selected = 0;
         sidebar.toggle_expand();
 
-        // only-folder has no more siblings at root, so child's guide should be [false]
-        assert_eq!(sidebar.flat_view[1].guide_depths, vec![false]);
+        // Even when only-folder is the last sibling, its children still get
+        // a guide line to show the indentation structure
+        assert_eq!(sidebar.flat_view[1].guide_depths, vec![true]);
     }
 
     #[test]
