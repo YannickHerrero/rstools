@@ -84,7 +84,7 @@ fn render_sidebar(frame: &mut Frame, area: Rect, sidebar: &SidebarState) {
 const GUIDE_STYLE: Style = Style::new().fg(Color::DarkGray);
 
 /// Background color for the selected/highlighted line.
-const SELECTED_BG: Color = Color::DarkGray;
+const SELECTED_BG: Color = Color::Gray;
 
 /// Render the tree entries in the sidebar.
 fn render_tree_entries(frame: &mut Frame, area: Rect, sidebar: &SidebarState) {
@@ -157,7 +157,7 @@ fn render_entry_line(
     let base_style = if is_selected {
         Style::default()
             .bg(SELECTED_BG)
-            .fg(Color::White)
+            .fg(Color::Black)
             .add_modifier(Modifier::BOLD)
     } else if is_cut {
         Style::default()
@@ -176,10 +176,10 @@ fn render_entry_line(
     for d in 0..entry.depth {
         let has_guide = entry.guide_depths.get(d).copied().unwrap_or(false);
         if has_guide {
-            // On selected lines, use a lighter foreground (Gray) so the guide
-            // remains visible against the DarkGray highlight background.
+            // Guide lines always use DarkGray foreground. On selected lines,
+            // add the selection background so the guide blends into the highlight.
             let guide_style = if is_selected {
-                Style::default().fg(Color::Gray).bg(SELECTED_BG)
+                GUIDE_STYLE.bg(SELECTED_BG)
             } else {
                 GUIDE_STYLE
             };
