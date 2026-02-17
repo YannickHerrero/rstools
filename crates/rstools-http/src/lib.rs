@@ -1,4 +1,5 @@
 pub mod model;
+pub mod request_panel;
 pub mod sidebar;
 pub mod ui;
 
