@@ -24,7 +24,7 @@ The entire UX is modeled after neovim with modal editing, hjkl navigation, leade
 |------|--------|-------------|
 | Hub | MVP | Main orchestrator, dashboard, tool picker, tab switching |
 | Todo | MVP | Minimalist todo list with vim navigation, filtering, CRUD |
-| HTTP | WIP | HTTP client & API explorer with neo-tree style sidebar |
+| HTTP | MVP | HTTP client & API explorer (Postman-like) with neo-tree sidebar |
 
 **Planned:** KeePass client, database viewer, and more.
 
@@ -92,7 +92,7 @@ The binary is `rstools`:
 | `j` / `k` | Move down / up |
 | `gg` / `G` | Jump to top / bottom |
 
-### HTTP Tool (Explorer Sidebar)
+### HTTP Tool — Explorer Sidebar
 
 | Key | Action |
 |-----|--------|
@@ -103,21 +103,68 @@ The binary is `rstools`:
 | `x` | Cut selected entry to clipboard |
 | `p` | Paste from clipboard (recursive for folders) |
 | `h` | Collapse folder / go to parent |
-| `l` / `Enter` | Expand folder |
+| `l` / `Enter` | Expand folder / open query in content panel |
 | `j` / `k` | Move down / up |
 | `gg` / `G` | Go to top / bottom |
 | `Ctrl-d` / `Ctrl-u` | Half-page down / up |
-| `<Space>e` | Toggle explorer sidebar |
+| `Ctrl-l` | Move focus to content panel |
 
 **Path creation:** When adding entries, use `/` to create nested folders.
 `group/api/get-user` creates folders "group" and "api", then query "get-user".
 Trailing `/` creates folder-only paths. Existing folders are reused.
 
+### HTTP Tool — Request Panel
+
+| Key | Action |
+|-----|--------|
+| `Tab` / `Shift-Tab` | Cycle sections (URL → Params → Headers → Body) |
+| `Ctrl-h/j/k/l` | Navigate between sections and panels |
+| `Ctrl-Enter` | Send request |
+| `<Space>s` | Send request (leader key) |
+| `<Space>e` | Toggle explorer sidebar |
+| `m` / `M` | Cycle HTTP method forward / backward |
+| `:w` | Save request to database |
+
+#### URL Section
+
+| Key | Action |
+|-----|--------|
+| `i` / `a` | Enter insert mode to edit URL |
+
+#### Params / Headers Sections
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move up / down |
+| `a` | Add new key-value row |
+| `i` / `Enter` | Edit selected row inline |
+| `dd` | Delete selected row |
+| `x` | Toggle row enabled / disabled |
+| `Tab` (while editing) | Switch between key and value fields |
+
+#### Body Section
+
+| Key | Action |
+|-----|--------|
+| `i` / `a` / `A` / `I` | Enter insert mode |
+| `o` / `O` | Insert line below / above |
+| `h` / `j` / `k` / `l` | Cursor movement |
+| `0` / `$` | Line start / end |
+
+#### Response Panel
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Scroll response body / headers |
+| `gg` / `G` | Go to top / bottom |
+| `Ctrl-d` / `Ctrl-u` | Half-page down / up |
+| `Tab` | Switch between Body and Headers tabs |
+
 ### Insert Mode (text input)
 
 | Key | Action |
 |-----|--------|
-| `Enter` | Submit input |
+| `Enter` | Submit input / new line (body) |
 | `Esc` | Cancel and return to Normal mode |
 | `Left` / `Right` | Move cursor |
 | `Backspace` | Delete character before cursor |
@@ -160,9 +207,11 @@ rstools/
 │   └── rstools-http/         # HTTP client & API explorer
 │       └── src/
 │           ├── lib.rs         # Tool trait impl, key handling, path creation
-│           ├── model.rs       # HttpEntry struct, tree CRUD, recursive copy
+│           ├── model.rs       # Data models, SQLite CRUD (entries, requests, headers, params)
 │           ├── sidebar.rs     # Tree state, flatten/sort, clipboard, navigation
-│           └── ui.rs          # Sidebar + placeholder content rendering
+│           ├── request_panel.rs # Request editor state (URL, headers, body, response)
+│           ├── executor.rs    # Async HTTP executor (background tokio runtime)
+│           └── ui.rs          # Full UI rendering (sidebar, request panel, response viewer)
 ```
 
 ### How it works
@@ -220,6 +269,34 @@ CREATE TABLE http_entries (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE http_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_id INTEGER UNIQUE NOT NULL REFERENCES http_entries(id) ON DELETE CASCADE,
+    method TEXT NOT NULL DEFAULT 'GET',
+    url TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE http_headers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL REFERENCES http_requests(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE http_query_params (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL REFERENCES http_requests(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
 ```
 
 ## Dependencies
@@ -229,6 +306,9 @@ CREATE TABLE http_entries (
 | ratatui | 0.30 | TUI rendering framework |
 | crossterm | 0.29 | Terminal backend (input/output) |
 | rusqlite | 0.38 | SQLite database (bundled) |
+| reqwest | 0.12 | HTTP client (async, rustls) |
+| tokio | 1 | Async runtime (background thread for HTTP) |
+| serde_json | 1 | JSON pretty-printing for responses |
 | chrono | 0.4 | Timestamps |
 | directories | 6 | XDG-compliant data paths |
 | anyhow | 1 | Error handling |
