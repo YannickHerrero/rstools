@@ -36,7 +36,9 @@ This is the most important aspect of the project. Every tool MUST follow these r
 - Format: `<Space>` shows top-level groups, then next key shows subgroup/action.
 - Example groups:
   - `<Space>t` — Todo
+  - `<Space>h` — HTTP
   - `<Space>f` — Find (telescope)
+  - `<Space>e` — Toggle HTTP explorer sidebar
   - `<Space>q` — Quit/Session
 
 ### Telescope (Fuzzy Finder)
@@ -92,6 +94,28 @@ These MUST be consistent across ALL tools:
   - `dd` — delete todo
   - `/` — search/filter todos
   - `o` — add todo below current
+
+### HTTP (`rstools-http`)
+- Tables: `http_entries`
+- Model: id, parent_id, name, entry_type (folder/query), created_at, updated_at
+- Tree structure: folders contain queries and sub-folders, like neo-tree
+- Sidebar: neo-tree style explorer (40 chars wide, toggle with `<Space>e`)
+- Keybinds (Normal mode, sidebar focused):
+  - `j/k` — move up/down
+  - `h` — collapse folder / go to parent
+  - `l` / `Enter` — expand folder
+  - `gg` / `G` — go to top / bottom
+  - `Ctrl-d` / `Ctrl-u` — half-page down / up
+  - `a` — add entry (supports paths like `group/api/get-user`)
+  - `r` — rename selected entry
+  - `d` — delete selected entry (with y/n confirmation)
+  - `y` — copy selected entry to clipboard
+  - `x` — cut selected entry to clipboard
+  - `p` — paste from clipboard (recursive for folders)
+- Path creation rules:
+  - `group/api/get-user` — intermediate segments become folders, last becomes query
+  - `group/api/` — trailing slash creates all segments as folders
+  - Existing folders are reused (not duplicated)
 
 ## Commit Conventions
 

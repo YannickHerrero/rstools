@@ -24,6 +24,7 @@ The entire UX is modeled after neovim with modal editing, hjkl navigation, leade
 |------|--------|-------------|
 | Hub | MVP | Main orchestrator, dashboard, tool picker, tab switching |
 | Todo | MVP | Minimalist todo list with vim navigation, filtering, CRUD |
+| HTTP | WIP | HTTP client & API explorer with neo-tree style sidebar |
 
 **Planned:** KeePass client, database viewer, and more.
 
@@ -56,6 +57,8 @@ The binary is `rstools`:
 | `<Space><Space>` | Tool picker (telescope) |
 | `<Space>f` | Find (telescope fuzzy finder) |
 | `<Space>t` | Todo tool (switch or sub-menu) |
+| `<Space>h` | HTTP tool (switch or sub-menu) |
+| `<Space>e` | Toggle HTTP explorer sidebar |
 | `<Space>q` | Quit |
 | `<Space>1-9` | Switch to tool by index |
 | `gt` / `gT` | Next / previous tool |
@@ -88,6 +91,27 @@ The binary is `rstools`:
 | `/` | Filter todos (live search) |
 | `j` / `k` | Move down / up |
 | `gg` / `G` | Jump to top / bottom |
+
+### HTTP Tool (Explorer Sidebar)
+
+| Key | Action |
+|-----|--------|
+| `a` | Add entry (supports paths like `group/api/get-user`) |
+| `r` | Rename selected entry |
+| `d` | Delete selected entry (with y/n confirmation) |
+| `y` | Copy selected entry to clipboard |
+| `x` | Cut selected entry to clipboard |
+| `p` | Paste from clipboard (recursive for folders) |
+| `h` | Collapse folder / go to parent |
+| `l` / `Enter` | Expand folder |
+| `j` / `k` | Move down / up |
+| `gg` / `G` | Go to top / bottom |
+| `Ctrl-d` / `Ctrl-u` | Half-page down / up |
+| `<Space>e` | Toggle explorer sidebar |
+
+**Path creation:** When adding entries, use `/` to create nested folders.
+`group/api/get-user` creates folders "group" and "api", then query "get-user".
+Trailing `/` creates folder-only paths. Existing folders are reused.
 
 ### Insert Mode (text input)
 
@@ -128,11 +152,17 @@ rstools/
 │   │   └── src/
 │   │       ├── main.rs        # Entry point, terminal setup, event loop
 │   │       └── app.rs         # App state, tool registry, event routing
-│   └── rstools-todo/         # Todo list tool
+│   ├── rstools-todo/         # Todo list tool
+│   │   └── src/
+│   │       ├── lib.rs         # Tool trait impl, input handling, state
+│   │       ├── model.rs       # Todo struct, SQLite CRUD operations
+│   │       └── ui.rs          # Todo list and input rendering
+│   └── rstools-http/         # HTTP client & API explorer
 │       └── src/
-│           ├── lib.rs         # Tool trait impl, input handling, state
-│           ├── model.rs       # Todo struct, SQLite CRUD operations
-│           └── ui.rs          # Todo list and input rendering
+│           ├── lib.rs         # Tool trait impl, key handling, path creation
+│           ├── model.rs       # HttpEntry struct, tree CRUD, recursive copy
+│           ├── sidebar.rs     # Tree state, flatten/sort, clipboard, navigation
+│           └── ui.rs          # Sidebar + placeholder content rendering
 ```
 
 ### How it works
@@ -146,10 +176,10 @@ rstools/
   of tools, routes key events to the active tool, and renders everything. Tools
   are embedded views, similar to buffers in neovim.
 
-- **rstools-todo** (and future tools) are library crates that implement the `Tool`
-  trait. Each tool manages its own state, handles its own keybinds (delegating
-  global ones back to the hub via the `Action` enum), renders its own UI, and
-  owns its own database tables.
+- **rstools-todo** and **rstools-http** (and future tools) are library crates that
+  implement the `Tool` trait. Each tool manages its own state, handles its own
+  keybinds (delegating global ones back to the hub via the `Action` enum), renders
+  its own UI, and owns its own database tables.
 
 ### Adding a new tool
 
@@ -179,6 +209,19 @@ CREATE TABLE todos (
 );
 ```
 
+### HTTP schema
+
+```sql
+CREATE TABLE http_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    parent_id INTEGER REFERENCES http_entries(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    entry_type TEXT NOT NULL CHECK(entry_type IN ('folder', 'query')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
 ## Dependencies
 
 | Crate | Version | Purpose |
@@ -189,6 +232,7 @@ CREATE TABLE todos (
 | chrono | 0.4 | Timestamps |
 | directories | 6 | XDG-compliant data paths |
 | anyhow | 1 | Error handling |
+| unicode-width | 0.2 | Unicode text width calculation |
 
 ## License
 
