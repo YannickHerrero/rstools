@@ -178,12 +178,12 @@ impl App {
     /// Show the leader key which-key menu.
     fn show_leader_menu(&mut self) {
         self.reset_all_key_state();
-        let entries = which_key::hub_leader_entries();
-        // Add tool-specific groups
-        for (i, tool) in self.tools.iter().enumerate() {
-            // Tools are already represented in hub_leader_entries
-            // This is where we'd add dynamic entries
-            let _ = (i, tool);
+        let mut entries = which_key::hub_leader_entries();
+        // Add context-specific entries based on active tool
+        if let Some(idx) = self.active_tool {
+            if self.tools[idx].name() == "HTTP" {
+                entries.insert(0, which_key::WhichKeyEntry::action("e", "Toggle explorer"));
+            }
         }
         self.which_key.show("Leader", entries);
     }
@@ -192,35 +192,22 @@ impl App {
     fn handle_leader_sequence(&mut self, c: char) {
         match c {
             't' => {
-                // Show todo sub-menu or switch to todo
+                // Switch to Todo tool
                 if let Some(idx) = self.tools.iter().position(|t| t.name() == "Todo") {
-                    let entries = self.tools[idx].which_key_entries();
-                    if entries.is_empty() {
-                        self.switch_to_tool(idx);
-                    } else {
-                        self.which_key.show("Todo", entries);
-                    }
+                    self.switch_to_tool(idx);
                 }
             }
             'h' => {
-                // Show HTTP sub-menu or switch to HTTP
+                // Switch to HTTP tool
                 if let Some(idx) = self.tools.iter().position(|t| t.name() == "HTTP") {
-                    let entries = self.tools[idx].which_key_entries();
-                    if entries.is_empty() {
-                        self.switch_to_tool(idx);
-                    } else {
-                        self.which_key.show("HTTP", entries);
-                    }
+                    self.switch_to_tool(idx);
                 }
             }
             'e' => {
-                // Toggle explorer sidebar (HTTP tool specific)
-                // If HTTP tool is active, delegate to it; otherwise switch to it
+                // Toggle explorer sidebar (only when HTTP tool is active)
                 if let Some(idx) = self.tools.iter().position(|t| t.name() == "HTTP") {
                     if self.active_tool == Some(idx) {
                         self.delegate_leader_action_to_tool(idx, 'e');
-                    } else {
-                        self.switch_to_tool(idx);
                     }
                 }
             }
@@ -237,8 +224,6 @@ impl App {
 
     /// Handle input while which-key is visible.
     fn handle_which_key_input(&mut self, key: KeyEvent) {
-        let current_title = self.which_key.title.clone();
-
         match key.code {
             KeyCode::Esc => {
                 self.which_key.hide();
@@ -247,18 +232,6 @@ impl App {
             KeyCode::Char(c) => {
                 self.which_key.hide();
                 self.reset_all_key_state();
-
-                // If we're in a tool-specific sub-menu, delegate to that tool
-                if current_title == "HTTP" {
-                    if let Some(idx) = self.tools.iter().position(|t| t.name() == "HTTP") {
-                        // Switch to the tool first if not already active
-                        if self.active_tool != Some(idx) {
-                            self.switch_to_tool(idx);
-                        }
-                        self.delegate_leader_action_to_tool(idx, c);
-                        return;
-                    }
-                }
 
                 // Process the which-key selection (top-level leader menu)
                 match c {
@@ -269,10 +242,9 @@ impl App {
                         self.open_telescope();
                     }
                     'h' => {
-                        // Show HTTP sub-menu
+                        // Switch to HTTP tool
                         if let Some(idx) = self.tools.iter().position(|t| t.name() == "HTTP") {
-                            let entries = self.tools[idx].which_key_entries();
-                            self.which_key.show("HTTP", entries);
+                            self.switch_to_tool(idx);
                         }
                     }
                     't' => {
@@ -282,12 +254,11 @@ impl App {
                         }
                     }
                     'e' => {
-                        // Toggle explorer sidebar — delegate to HTTP tool
+                        // Toggle explorer sidebar (only when HTTP tool is active)
                         if let Some(idx) = self.tools.iter().position(|t| t.name() == "HTTP") {
-                            if self.active_tool != Some(idx) {
-                                self.switch_to_tool(idx);
+                            if self.active_tool == Some(idx) {
+                                self.delegate_leader_action_to_tool(idx, 'e');
                             }
-                            self.delegate_leader_action_to_tool(idx, 'e');
                         }
                     }
                     '?' => {

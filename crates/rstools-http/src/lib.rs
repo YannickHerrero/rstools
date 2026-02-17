@@ -437,12 +437,7 @@ impl Tool for HttpTool {
     }
 
     fn which_key_entries(&self) -> Vec<WhichKeyEntry> {
-        vec![
-            WhichKeyEntry::action("e", "Toggle explorer"),
-            WhichKeyEntry::action("a", "Add entry"),
-            WhichKeyEntry::action("r", "Rename entry"),
-            WhichKeyEntry::action("d", "Delete entry"),
-        ]
+        vec![]
     }
 
     fn telescope_items(&self) -> Vec<TelescopeItem> {
@@ -505,28 +500,6 @@ impl Tool for HttpTool {
         match key {
             'e' => {
                 self.sidebar.visible = !self.sidebar.visible;
-                Some(Action::None)
-            }
-            'a' => {
-                if self.sidebar.visible {
-                    self.sidebar.start_add();
-                    self.mode = InputMode::Insert;
-                }
-                Some(Action::None)
-            }
-            'd' => {
-                if self.sidebar.visible {
-                    self.sidebar.start_delete();
-                }
-                Some(Action::None)
-            }
-            'r' => {
-                if self.sidebar.visible {
-                    self.sidebar.start_rename();
-                    if self.sidebar.input_mode == SidebarInput::Renaming {
-                        self.mode = InputMode::Insert;
-                    }
-                }
                 Some(Action::None)
             }
             _ => None,
