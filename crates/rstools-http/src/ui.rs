@@ -83,12 +83,16 @@ fn render_sidebar(frame: &mut Frame, area: Rect, sidebar: &SidebarState) {
 /// Style for the dim vertical indent guide lines.
 const GUIDE_STYLE: Style = Style::new().fg(Color::DarkGray);
 
+/// Background color for the selected/highlighted line — a subtle dark grey
+/// that's light enough for guide lines to remain visible through it.
+const SELECTED_BG: Color = Color::Rgb(50, 50, 50);
+
 /// Render the tree entries in the sidebar.
 fn render_tree_entries(frame: &mut Frame, area: Rect, sidebar: &SidebarState) {
     if sidebar.flat_view.is_empty() {
         // Even with no entries, show the blank root line if it's selected
         if sidebar.selected == 0 {
-            let highlight = Style::default().bg(Color::DarkGray);
+            let highlight = Style::default().bg(SELECTED_BG);
             let blank = Line::from(Span::styled(" ".repeat(area.width as usize), highlight));
             let widget = Paragraph::new(vec![blank]);
             frame.render_widget(widget, area);
@@ -122,7 +126,7 @@ fn render_tree_entries(frame: &mut Frame, area: Rect, sidebar: &SidebarState) {
             // Blank root line (one past last entry)
             let is_selected = item_idx == sidebar.selected;
             if is_selected {
-                let highlight = Style::default().bg(Color::DarkGray);
+                let highlight = Style::default().bg(SELECTED_BG);
                 lines.push(Line::from(Span::styled(
                     " ".repeat(area.width as usize),
                     highlight,
@@ -153,7 +157,7 @@ fn render_entry_line(
 
     let base_style = if is_selected {
         Style::default()
-            .bg(Color::DarkGray)
+            .bg(SELECTED_BG)
             .fg(Color::White)
             .add_modifier(Modifier::BOLD)
     } else if is_cut {
@@ -173,15 +177,14 @@ fn render_entry_line(
     for d in 0..entry.depth {
         let has_guide = entry.guide_depths.get(d).copied().unwrap_or(false);
         if has_guide {
-            if is_selected {
-                // On selected line, keep guide subtly visible against highlight
-                spans.push(Span::styled(
-                    "\u{2502} ",
-                    Style::default().fg(Color::Gray).bg(Color::DarkGray),
-                ));
+            // Guide lines keep their normal dim style; the selected line's
+            // lighter background lets them show through naturally.
+            let guide_style = if is_selected {
+                GUIDE_STYLE.bg(SELECTED_BG)
             } else {
-                spans.push(Span::styled("\u{2502} ", GUIDE_STYLE));
-            }
+                GUIDE_STYLE
+            };
+            spans.push(Span::styled("\u{2502} ", guide_style));
         } else {
             spans.push(Span::styled("  ", base_style));
         }
@@ -210,7 +213,7 @@ fn render_entry_line(
         if remaining > 0 {
             spans.push(Span::styled(
                 " ".repeat(remaining),
-                Style::default().bg(Color::DarkGray),
+                Style::default().bg(SELECTED_BG),
             ));
         }
     }
