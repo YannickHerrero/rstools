@@ -378,8 +378,21 @@ fn flatten_tree(nodes: &[TreeNode], depth: usize, out: &mut Vec<FlatEntry>) {
     }
 }
 
+/// Find an immutable reference to a node by entry ID.
+pub fn find_node(nodes: &[TreeNode], id: i64) -> Option<&TreeNode> {
+    for node in nodes {
+        if node.entry.id == id {
+            return Some(node);
+        }
+        if let Some(found) = find_node(&node.children, id) {
+            return Some(found);
+        }
+    }
+    None
+}
+
 /// Find a mutable reference to a node by entry ID.
-fn find_node_mut(nodes: &mut Vec<TreeNode>, id: i64) -> Option<&mut TreeNode> {
+pub fn find_node_mut(nodes: &mut Vec<TreeNode>, id: i64) -> Option<&mut TreeNode> {
     for node in nodes.iter_mut() {
         if node.entry.id == id {
             return Some(node);
@@ -392,7 +405,7 @@ fn find_node_mut(nodes: &mut Vec<TreeNode>, id: i64) -> Option<&mut TreeNode> {
 }
 
 /// Find the parent ID of an entry by searching the tree.
-fn find_parent_id(nodes: &[TreeNode], target_id: i64) -> Option<i64> {
+pub fn find_parent_id(nodes: &[TreeNode], target_id: i64) -> Option<i64> {
     for node in nodes {
         for child in &node.children {
             if child.entry.id == target_id {
