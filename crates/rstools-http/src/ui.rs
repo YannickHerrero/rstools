@@ -6,6 +6,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
+use unicode_width::UnicodeWidthStr;
 
 /// Fixed sidebar width in characters.
 pub const SIDEBAR_WIDTH: u16 = 40;
@@ -173,13 +174,13 @@ fn render_entry_line(
         let has_guide = entry.guide_depths.get(d).copied().unwrap_or(false);
         if has_guide {
             if is_selected {
-                // On selected line, blend guide into selection background
+                // On selected line, keep guide subtly visible against highlight
                 spans.push(Span::styled(
-                    "│ ",
-                    Style::default().fg(Color::DarkGray).bg(Color::DarkGray),
+                    "\u{2502} ",
+                    Style::default().fg(Color::Gray).bg(Color::DarkGray),
                 ));
             } else {
-                spans.push(Span::styled("│ ", GUIDE_STYLE));
+                spans.push(Span::styled("\u{2502} ", GUIDE_STYLE));
             }
         } else {
             spans.push(Span::styled("  ", base_style));
@@ -204,7 +205,7 @@ fn render_entry_line(
 
     // If selected, pad the rest of the line with the highlight background
     if is_selected {
-        let content_width: usize = spans.iter().map(|s| s.content.len()).sum();
+        let content_width: usize = spans.iter().map(|s| s.content.width()).sum();
         let remaining = (area_width as usize).saturating_sub(content_width);
         if remaining > 0 {
             spans.push(Span::styled(
