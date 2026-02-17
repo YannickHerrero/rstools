@@ -79,78 +79,142 @@ fn render_sidebar(frame: &mut Frame, area: Rect, sidebar: &SidebarState) {
     }
 }
 
+/// Style for the dim vertical indent guide lines.
+const GUIDE_STYLE: Style = Style::new().fg(Color::DarkGray);
+
 /// Render the tree entries in the sidebar.
 fn render_tree_entries(frame: &mut Frame, area: Rect, sidebar: &SidebarState) {
     if sidebar.flat_view.is_empty() {
-        let empty = Paragraph::new("  No entries yet. Press 'a' to add.")
-            .style(Style::default().fg(Color::DarkGray));
-        frame.render_widget(empty, area);
+        // Even with no entries, show the blank root line if it's selected
+        if sidebar.selected == 0 {
+            let highlight = Style::default().bg(Color::DarkGray);
+            let blank = Line::from(Span::styled(" ".repeat(area.width as usize), highlight));
+            let widget = Paragraph::new(vec![blank]);
+            frame.render_widget(widget, area);
+        } else {
+            let empty = Paragraph::new("  No entries yet. Press 'a' to add.")
+                .style(Style::default().fg(Color::DarkGray));
+            frame.render_widget(empty, area);
+        }
         return;
     }
 
-    // Calculate scroll offset to keep selection visible
+    // Total renderable items: flat_view entries + 1 blank root line
+    let total_items = sidebar.flat_view.len() + 1;
     let visible_lines = area.height as usize;
+
+    // Calculate scroll offset to keep selection visible
     let scroll_offset = if sidebar.selected >= visible_lines {
         sidebar.selected - visible_lines + 1
     } else {
         0
     };
 
-    let lines: Vec<Line> = sidebar
-        .flat_view
-        .iter()
-        .enumerate()
-        .skip(scroll_offset)
-        .take(visible_lines)
-        .map(|(idx, entry)| {
-            let indent = "  ".repeat(entry.depth);
+    let mut lines: Vec<Line> = Vec::new();
 
-            let icon = match entry.entry_type {
-                crate::model::EntryType::Folder => {
-                    if entry.is_expanded {
-                        " "
-                    } else {
-                        " "
-                    }
-                }
-                crate::model::EntryType::Query => "● ",
-            };
-
-            let is_selected = idx == sidebar.selected;
-            let is_cut = sidebar
-                .clipboard
-                .as_ref()
-                .map(|c| {
-                    c.entry_id == entry.entry_id && c.mode == crate::sidebar::ClipboardMode::Cut
-                })
-                .unwrap_or(false);
-
-            let style = if is_selected {
-                Style::default()
-                    .bg(Color::DarkGray)
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD)
-            } else if is_cut {
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::DIM)
+    for item_idx in scroll_offset..total_items.min(scroll_offset + visible_lines) {
+        if item_idx < sidebar.flat_view.len() {
+            // Regular tree entry
+            let entry = &sidebar.flat_view[item_idx];
+            lines.push(render_entry_line(entry, item_idx, sidebar, area.width));
+        } else {
+            // Blank root line (one past last entry)
+            let is_selected = item_idx == sidebar.selected;
+            if is_selected {
+                let highlight = Style::default().bg(Color::DarkGray);
+                lines.push(Line::from(Span::styled(
+                    " ".repeat(area.width as usize),
+                    highlight,
+                )));
             } else {
-                match entry.entry_type {
-                    crate::model::EntryType::Folder => Style::default().fg(Color::Blue),
-                    crate::model::EntryType::Query => Style::default().fg(Color::White),
-                }
-            };
-
-            Line::from(vec![
-                Span::styled(indent, style),
-                Span::styled(icon, style),
-                Span::styled(entry.name.clone(), style),
-            ])
-        })
-        .collect();
+                lines.push(Line::from(""));
+            }
+        }
+    }
 
     let tree_widget = Paragraph::new(lines);
     frame.render_widget(tree_widget, area);
+}
+
+/// Render a single tree entry line with indent guides, icon, and name.
+fn render_entry_line(
+    entry: &crate::sidebar::FlatEntry,
+    idx: usize,
+    sidebar: &SidebarState,
+    area_width: u16,
+) -> Line<'static> {
+    let is_selected = idx == sidebar.selected;
+    let is_cut = sidebar
+        .clipboard
+        .as_ref()
+        .map(|c| c.entry_id == entry.entry_id && c.mode == crate::sidebar::ClipboardMode::Cut)
+        .unwrap_or(false);
+
+    let base_style = if is_selected {
+        Style::default()
+            .bg(Color::DarkGray)
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
+    } else if is_cut {
+        Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::DIM)
+    } else {
+        match entry.entry_type {
+            crate::model::EntryType::Folder => Style::default().fg(Color::Blue),
+            crate::model::EntryType::Query => Style::default().fg(Color::White),
+        }
+    };
+
+    // Build indent with guide lines
+    let mut spans: Vec<Span<'static>> = Vec::new();
+
+    for d in 0..entry.depth {
+        let has_guide = entry.guide_depths.get(d).copied().unwrap_or(false);
+        if has_guide {
+            if is_selected {
+                // On selected line, blend guide into selection background
+                spans.push(Span::styled(
+                    "│ ",
+                    Style::default().fg(Color::DarkGray).bg(Color::DarkGray),
+                ));
+            } else {
+                spans.push(Span::styled("│ ", GUIDE_STYLE));
+            }
+        } else {
+            spans.push(Span::styled("  ", base_style));
+        }
+    }
+
+    // Icon
+    let icon: &str = match entry.entry_type {
+        crate::model::EntryType::Folder => {
+            if entry.is_expanded {
+                " "
+            } else {
+                " "
+            }
+        }
+        crate::model::EntryType::Query => "● ",
+    };
+    spans.push(Span::styled(icon.to_string(), base_style));
+
+    // Name
+    spans.push(Span::styled(entry.name.clone(), base_style));
+
+    // If selected, pad the rest of the line with the highlight background
+    if is_selected {
+        let content_width: usize = spans.iter().map(|s| s.content.len()).sum();
+        let remaining = (area_width as usize).saturating_sub(content_width);
+        if remaining > 0 {
+            spans.push(Span::styled(
+                " ".repeat(remaining),
+                Style::default().bg(Color::DarkGray),
+            ));
+        }
+    }
+
+    Line::from(spans)
 }
 
 /// Render the input prompt at the bottom of the sidebar.

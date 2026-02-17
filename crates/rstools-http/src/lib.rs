@@ -82,11 +82,20 @@ impl HttpTool {
                 self.sidebar.collapse_or_parent();
                 Action::None
             }
-            KeyCode::Char('l') | KeyCode::Enter => {
-                // Expand folder, or select query
+            KeyCode::Char('l') => {
+                // l only expands folders (never collapses), like neo-tree
                 if let Some(entry) = self.sidebar.selected_entry() {
                     if entry.entry_type == EntryType::Folder {
                         self.sidebar.expand_selected();
+                    }
+                }
+                Action::None
+            }
+            KeyCode::Enter => {
+                // Enter toggles folder expand/collapse
+                if let Some(entry) = self.sidebar.selected_entry() {
+                    if entry.entry_type == EntryType::Folder {
+                        self.sidebar.toggle_expand();
                     }
                     // For queries, this would open them in the main panel (future)
                 }

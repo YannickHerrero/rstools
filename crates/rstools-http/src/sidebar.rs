@@ -19,6 +19,9 @@ pub struct FlatEntry {
     pub entry_type: EntryType,
     pub is_expanded: bool,
     pub has_children: bool,
+    /// For each depth level 0..depth, whether a vertical guide line (│) should
+    /// be drawn. True when the ancestor at that depth has more siblings below.
+    pub guide_depths: Vec<bool>,
 }
 
 /// Clipboard operations.
@@ -95,7 +98,7 @@ impl SidebarState {
     pub fn rebuild_flat_view(&mut self) {
         let old_id = self.selected_entry_id();
         self.flat_view.clear();
-        flatten_tree(&self.roots, 0, &mut self.flat_view);
+        flatten_tree(&self.roots, 0, &[], &mut self.flat_view);
 
         // Try to restore selection by entry ID
         if let Some(id) = old_id {
@@ -105,10 +108,20 @@ impl SidebarState {
             }
         }
 
-        // Clamp selection
-        if !self.flat_view.is_empty() && self.selected >= self.flat_view.len() {
-            self.selected = self.flat_view.len() - 1;
+        // Clamp selection: allow selected == flat_view.len() (the blank root line)
+        if self.selected > self.max_selectable() {
+            self.selected = self.max_selectable();
         }
+    }
+
+    /// The maximum selectable index: flat_view.len() is the blank root line.
+    fn max_selectable(&self) -> usize {
+        self.flat_view.len()
+    }
+
+    /// Whether the cursor is on the blank root line (one past last entry).
+    pub fn is_on_blank_line(&self) -> bool {
+        self.selected == self.flat_view.len() && !self.flat_view.is_empty()
     }
 
     /// Get the currently selected flat entry, if any.
@@ -121,9 +134,9 @@ impl SidebarState {
         self.selected_entry().map(|e| e.entry_id)
     }
 
-    /// Move selection down.
+    /// Move selection down. Can go one past last entry (blank root line).
     pub fn move_down(&mut self) {
-        if !self.flat_view.is_empty() && self.selected < self.flat_view.len() - 1 {
+        if self.selected < self.max_selectable() {
             self.selected += 1;
         }
     }
@@ -140,17 +153,15 @@ impl SidebarState {
         self.selected = 0;
     }
 
-    /// Go to the bottom of the list.
+    /// Go to the bottom of the list (the blank root line).
     pub fn goto_bottom(&mut self) {
-        if !self.flat_view.is_empty() {
-            self.selected = self.flat_view.len() - 1;
-        }
+        self.selected = self.max_selectable();
     }
 
     /// Half-page down.
     pub fn half_page_down(&mut self, visible_lines: usize) {
         let half = visible_lines / 2;
-        self.selected = (self.selected + half).min(self.flat_view.len().saturating_sub(1));
+        self.selected = (self.selected + half).min(self.max_selectable());
     }
 
     /// Half-page up.
@@ -362,8 +373,20 @@ fn sort_tree(nodes: &mut Vec<TreeNode>) {
 }
 
 /// Flatten visible tree nodes into a list for rendering.
-fn flatten_tree(nodes: &[TreeNode], depth: usize, out: &mut Vec<FlatEntry>) {
-    for node in nodes {
+/// `parent_guides` tracks whether each ancestor depth level has more siblings
+/// below, so we know where to draw vertical guide lines (│).
+fn flatten_tree(
+    nodes: &[TreeNode],
+    depth: usize,
+    parent_guides: &[bool],
+    out: &mut Vec<FlatEntry>,
+) {
+    for (i, node) in nodes.iter().enumerate() {
+        let has_more_siblings = i < nodes.len() - 1;
+
+        // Build guide_depths for this entry: inherit parent guides
+        let guide_depths = parent_guides.to_vec();
+
         out.push(FlatEntry {
             entry_id: node.entry.id,
             depth,
@@ -371,9 +394,15 @@ fn flatten_tree(nodes: &[TreeNode], depth: usize, out: &mut Vec<FlatEntry>) {
             entry_type: node.entry.entry_type,
             is_expanded: node.expanded,
             has_children: !node.children.is_empty(),
+            guide_depths,
         });
+
         if node.expanded {
-            flatten_tree(&node.children, depth + 1, out);
+            // For children, extend the guides: this node's depth gets a guide
+            // line if this node has more siblings after it.
+            let mut child_guides = parent_guides.to_vec();
+            child_guides.push(has_more_siblings);
+            flatten_tree(&node.children, depth + 1, &child_guides, out);
         }
     }
 }
@@ -491,17 +520,24 @@ mod tests {
         assert_eq!(sidebar.selected, 1);
         sidebar.move_down();
         assert_eq!(sidebar.selected, 2);
-        sidebar.move_down(); // should not go past end
-        assert_eq!(sidebar.selected, 2);
+        sidebar.move_down(); // moves to blank root line
+        assert_eq!(sidebar.selected, 3);
+        assert!(sidebar.is_on_blank_line());
+        assert!(sidebar.selected_entry().is_none());
+        sidebar.move_down(); // should not go past blank line
+        assert_eq!(sidebar.selected, 3);
 
         sidebar.goto_top();
         assert_eq!(sidebar.selected, 0);
 
-        sidebar.goto_bottom();
-        assert_eq!(sidebar.selected, 2);
+        sidebar.goto_bottom(); // goes to blank root line
+        assert_eq!(sidebar.selected, 3);
+        assert!(sidebar.is_on_blank_line());
 
         sidebar.move_up();
-        assert_eq!(sidebar.selected, 1);
+        assert_eq!(sidebar.selected, 2);
+        assert!(!sidebar.is_on_blank_line());
+        assert!(sidebar.selected_entry().is_some());
     }
 
     #[test]
@@ -550,5 +586,106 @@ mod tests {
 
         sidebar.input_cursor_right();
         assert_eq!(sidebar.input_cursor, 5);
+    }
+
+    #[test]
+    fn test_guide_depths() {
+        let conn = setup_db();
+        let folder_a = model::add_entry(&conn, None, "a-folder", EntryType::Folder).unwrap();
+        let sub = model::add_entry(&conn, Some(folder_a), "sub", EntryType::Folder).unwrap();
+        model::add_entry(&conn, Some(sub), "query-1", EntryType::Query).unwrap();
+        model::add_entry(&conn, Some(sub), "query-2", EntryType::Query).unwrap();
+        model::add_entry(&conn, Some(folder_a), "query-3", EntryType::Query).unwrap();
+        model::add_entry(&conn, None, "b-query", EntryType::Query).unwrap();
+
+        let mut sidebar = SidebarState::new();
+        sidebar.reload(&conn).unwrap();
+
+        // Expand all folders
+        sidebar.selected = 0; // a-folder
+        sidebar.toggle_expand();
+        sidebar.selected = 1; // sub
+        sidebar.toggle_expand();
+
+        // Expected flat view:
+        // 0: a-folder          depth=0, guides=[]
+        // 1:   sub              depth=1, guides=[true]  (a-folder has more siblings: b-query)
+        // 2:     query-1        depth=2, guides=[true, true]  (sub has sibling: query-3)
+        // 3:     query-2        depth=2, guides=[true, true]
+        // 4:   query-3          depth=1, guides=[true]
+        // 5: b-query            depth=0, guides=[]
+
+        assert_eq!(sidebar.flat_view.len(), 6);
+
+        // a-folder: depth 0, no guides
+        assert_eq!(sidebar.flat_view[0].guide_depths, Vec::<bool>::new());
+
+        // sub: depth 1, parent (a-folder) has more siblings (b-query) → [true]
+        assert_eq!(sidebar.flat_view[1].guide_depths, vec![true]);
+
+        // query-1: depth 2, grandparent has more siblings [true], parent (sub) has sibling (query-3) [true]
+        assert_eq!(sidebar.flat_view[2].guide_depths, vec![true, true]);
+
+        // query-2: depth 2, same guides
+        assert_eq!(sidebar.flat_view[3].guide_depths, vec![true, true]);
+
+        // query-3: depth 1, parent (a-folder) has more siblings [true]
+        assert_eq!(sidebar.flat_view[4].guide_depths, vec![true]);
+
+        // b-query: depth 0, no guides
+        assert_eq!(sidebar.flat_view[5].guide_depths, Vec::<bool>::new());
+    }
+
+    #[test]
+    fn test_guide_depths_last_sibling() {
+        let conn = setup_db();
+        let folder = model::add_entry(&conn, None, "only-folder", EntryType::Folder).unwrap();
+        model::add_entry(&conn, Some(folder), "child", EntryType::Query).unwrap();
+
+        let mut sidebar = SidebarState::new();
+        sidebar.reload(&conn).unwrap();
+
+        sidebar.selected = 0;
+        sidebar.toggle_expand();
+
+        // only-folder has no more siblings at root, so child's guide should be [false]
+        assert_eq!(sidebar.flat_view[1].guide_depths, vec![false]);
+    }
+
+    #[test]
+    fn test_blank_line_empty_tree() {
+        let conn = setup_db();
+        let mut sidebar = SidebarState::new();
+        sidebar.reload(&conn).unwrap();
+
+        // Empty tree: selected starts at 0, which is the blank line
+        assert_eq!(sidebar.selected, 0);
+        assert!(sidebar.flat_view.is_empty());
+        assert!(sidebar.selected_entry().is_none());
+        // Not considered "on blank line" when tree is empty (no entries to be past)
+        assert!(!sidebar.is_on_blank_line());
+    }
+
+    #[test]
+    fn test_blank_line_with_entries() {
+        let conn = setup_db();
+        model::add_entry(&conn, None, "item", EntryType::Query).unwrap();
+
+        let mut sidebar = SidebarState::new();
+        sidebar.reload(&conn).unwrap();
+
+        assert_eq!(sidebar.flat_view.len(), 1);
+
+        // Move past last entry to blank line
+        sidebar.move_down();
+        assert_eq!(sidebar.selected, 1);
+        assert!(sidebar.is_on_blank_line());
+        assert!(sidebar.selected_entry().is_none());
+
+        // Move back up
+        sidebar.move_up();
+        assert_eq!(sidebar.selected, 0);
+        assert!(!sidebar.is_on_blank_line());
+        assert!(sidebar.selected_entry().is_some());
     }
 }
