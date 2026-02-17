@@ -83,9 +83,8 @@ fn render_sidebar(frame: &mut Frame, area: Rect, sidebar: &SidebarState) {
 /// Style for the dim vertical indent guide lines.
 const GUIDE_STYLE: Style = Style::new().fg(Color::DarkGray);
 
-/// Background color for the selected/highlighted line — a subtle dark grey
-/// that's light enough for guide lines to remain visible through it.
-const SELECTED_BG: Color = Color::Rgb(50, 50, 50);
+/// Background color for the selected/highlighted line.
+const SELECTED_BG: Color = Color::DarkGray;
 
 /// Render the tree entries in the sidebar.
 fn render_tree_entries(frame: &mut Frame, area: Rect, sidebar: &SidebarState) {
@@ -177,10 +176,10 @@ fn render_entry_line(
     for d in 0..entry.depth {
         let has_guide = entry.guide_depths.get(d).copied().unwrap_or(false);
         if has_guide {
-            // Guide lines keep their normal dim style; the selected line's
-            // lighter background lets them show through naturally.
+            // On selected lines, use a lighter foreground (Gray) so the guide
+            // remains visible against the DarkGray highlight background.
             let guide_style = if is_selected {
-                GUIDE_STYLE.bg(SELECTED_BG)
+                Style::default().fg(Color::Gray).bg(SELECTED_BG)
             } else {
                 GUIDE_STYLE
             };
