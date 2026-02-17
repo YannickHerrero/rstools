@@ -4,29 +4,25 @@ A vim-centric terminal toolset built in Rust with [ratatui](https://ratatui.rs).
 
 ## Philosophy
 
-rstools is a collection of independent terminal tools unified by a single hub,
-designed for people who think in vim. If you live in neovim and wish every tool
-had hjkl navigation, a leader key, which-key for discoverability, and telescope
-for finding things — this is for you.
+rstools is a collection of independent terminal tools unified by a single hub.
+The entire UX is modeled after neovim with modal editing, hjkl navigation, leader key, which-key, and telescope.
 
 **Core principles:**
 
-- **Vim keybindings are not an afterthought** — they are the primary and only
-  input method. Modal editing (Normal/Insert/Command), motions, and operators
-  work the way you expect.
-- **Space as leader** — press Space in Normal mode and a which-key popup shows
-  you every available action. No memorization required.
-- **Telescope everywhere** — fuzzy find anything across any tool.
-- **One hub, many tools** — tools are embedded views inside a single terminal
-  app, like buffers in neovim. Switch between them instantly.
-- **Local-first data** — everything is stored in a single SQLite database on
-  your machine. No cloud, no accounts, no sync complexity.
+- **Vim-native input**: modal editing (Normal/Insert/Command), motions, and
+  operators are the primary and only input method.
+- **Space as leader**: press Space in Normal mode and a which-key popup shows
+  every available action.
+- **Telescope**: fuzzy find anything across any tool.
+- **One hub, many tools**: tools are embedded views inside a single terminal
+  app. Switch between them like buffers in neovim.
+- **Local-first data**: everything is stored in a single local SQLite database.
 
 ## Tools
 
 | Tool | Status | Description |
 |------|--------|-------------|
-| Hub | MVP | Main orchestrator — dashboard, tool picker, tab switching |
+| Hub | MVP | Main orchestrator, dashboard, tool picker, tab switching |
 | Todo | MVP | Minimalist todo list with vim navigation, filtering, CRUD |
 
 **Planned:** KeePass client, database viewer, and more.
@@ -52,7 +48,7 @@ The binary is `rstools`:
 | `Esc` | Return to Normal mode / cancel input |
 | `Ctrl-c` | Force quit |
 
-### Normal Mode — Global
+### Normal Mode, Global
 
 | Key | Action |
 |-----|--------|
@@ -68,7 +64,7 @@ The binary is `rstools`:
 | `q` | Quit (from dashboard) |
 | `?` | Help |
 
-### Normal Mode — List Navigation (all tools)
+### Normal Mode, List Navigation (all tools)
 
 | Key | Action |
 |-----|--------|
@@ -141,17 +137,16 @@ rstools/
 
 ### How it works
 
-- **rstools-core** — every tool depends on this. It provides the `Tool` trait,
+- **rstools-core** is the shared foundation. It provides the `Tool` trait,
   vim-style input handling with multi-key sequences (`gg`, `dd`, `gt`), the
   which-key popup, telescope overlay, database connection, and shared UI
   components (tab bar, status bar, command line).
 
-- **rstools-hub** — the only binary. It owns the event loop, manages a registry
+- **rstools-hub** is the only binary. It owns the event loop, manages a registry
   of tools, routes key events to the active tool, and renders everything. Tools
-  are embedded views — switching between them is instant, like switching buffers
-  in neovim.
+  are embedded views, similar to buffers in neovim.
 
-- **rstools-todo** (and future tools) — library crates that implement the `Tool`
+- **rstools-todo** (and future tools) are library crates that implement the `Tool`
   trait. Each tool manages its own state, handles its own keybinds (delegating
   global ones back to the hub via the `Action` enum), renders its own UI, and
   owns its own database tables.
