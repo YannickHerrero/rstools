@@ -156,9 +156,12 @@ impl Telescope {
         if self.filtered.is_empty() {
             self.list_state.select(None);
         } else {
-            let sel = self.list_state.selected().unwrap_or(0);
-            if sel >= self.filtered.len() {
-                self.list_state.select(Some(self.filtered.len() - 1));
+            match self.list_state.selected() {
+                None => self.list_state.select(Some(0)),
+                Some(sel) if sel >= self.filtered.len() => {
+                    self.list_state.select(Some(self.filtered.len() - 1));
+                }
+                _ => {}
             }
         }
     }
