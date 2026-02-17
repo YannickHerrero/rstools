@@ -1,3 +1,4 @@
+pub mod executor;
 pub mod model;
 pub mod request_panel;
 pub mod sidebar;
