@@ -1067,7 +1067,11 @@ impl Tool for HttpTool {
     }
 
     fn which_key_entries(&self) -> Vec<WhichKeyEntry> {
-        vec![]
+        vec![
+            WhichKeyEntry::action('s', "Send request"),
+            WhichKeyEntry::action('e', "Toggle sidebar"),
+            WhichKeyEntry::action('m', "Cycle method"),
+        ]
     }
 
     fn telescope_items(&self) -> Vec<TelescopeItem> {
@@ -1076,17 +1080,43 @@ impl Tool for HttpTool {
 
     fn help_entries(&self) -> Vec<HelpEntry> {
         vec![
-            HelpEntry::with_section("HTTP Explorer", "a", "Add entry (path with / for nesting)"),
-            HelpEntry::with_section("HTTP Explorer", "r", "Rename selected entry"),
-            HelpEntry::with_section("HTTP Explorer", "d", "Delete selected entry"),
-            HelpEntry::with_section("HTTP Explorer", "y", "Copy selected entry"),
-            HelpEntry::with_section("HTTP Explorer", "x", "Cut selected entry"),
-            HelpEntry::with_section("HTTP Explorer", "p", "Paste entry"),
-            HelpEntry::with_section("HTTP Explorer", "h", "Collapse folder / go to parent"),
-            HelpEntry::with_section("HTTP Explorer", "l / Enter", "Expand folder"),
-            HelpEntry::with_section("HTTP Explorer", "j / k", "Navigate up / down"),
-            HelpEntry::with_section("HTTP Explorer", "gg / G", "Go to top / bottom"),
-            HelpEntry::with_section("HTTP Explorer", "<Space>e", "Toggle explorer sidebar"),
+            // Sidebar
+            HelpEntry::with_section("Sidebar", "a", "Add entry (path with / for nesting)"),
+            HelpEntry::with_section("Sidebar", "r", "Rename selected entry"),
+            HelpEntry::with_section("Sidebar", "d", "Delete selected entry"),
+            HelpEntry::with_section("Sidebar", "y", "Copy selected entry"),
+            HelpEntry::with_section("Sidebar", "x", "Cut selected entry"),
+            HelpEntry::with_section("Sidebar", "p", "Paste entry"),
+            HelpEntry::with_section("Sidebar", "h", "Collapse folder / go to parent"),
+            HelpEntry::with_section("Sidebar", "l / Enter", "Expand folder / open query"),
+            HelpEntry::with_section("Sidebar", "j / k", "Navigate up / down"),
+            HelpEntry::with_section("Sidebar", "gg / G", "Go to top / bottom"),
+            HelpEntry::with_section("Sidebar", "Ctrl-l", "Move focus to content panel"),
+            // Request Panel
+            HelpEntry::with_section("Request", "Tab / S-Tab", "Cycle sections (URL/Params/Headers/Body)"),
+            HelpEntry::with_section("Request", "Ctrl-h/j/k/l", "Navigate between sections/panels"),
+            HelpEntry::with_section("Request", "Ctrl-Enter", "Send request"),
+            HelpEntry::with_section("Request", "<Space>s", "Send request"),
+            HelpEntry::with_section("Request", ":w", "Save request to database"),
+            HelpEntry::with_section("Request", "m / M", "Cycle method forward / backward"),
+            // URL section
+            HelpEntry::with_section("URL", "i / a", "Edit URL"),
+            // Params / Headers
+            HelpEntry::with_section("Key-Value", "a", "Add new row"),
+            HelpEntry::with_section("Key-Value", "i / Enter", "Edit selected row"),
+            HelpEntry::with_section("Key-Value", "dd", "Delete selected row"),
+            HelpEntry::with_section("Key-Value", "x", "Toggle row enabled/disabled"),
+            HelpEntry::with_section("Key-Value", "Tab (edit)", "Switch between key/value fields"),
+            // Body
+            HelpEntry::with_section("Body", "i / a / A / I", "Enter insert mode"),
+            HelpEntry::with_section("Body", "o / O", "Insert line below / above"),
+            HelpEntry::with_section("Body", "hjkl", "Cursor movement"),
+            // Response
+            HelpEntry::with_section("Response", "j / k", "Scroll response"),
+            HelpEntry::with_section("Response", "gg / G", "Go to top / bottom"),
+            HelpEntry::with_section("Response", "Tab", "Switch Body / Headers"),
+            // General
+            HelpEntry::with_section("General", "<Space>e", "Toggle explorer sidebar"),
         ]
     }
 

@@ -188,8 +188,9 @@ impl App {
         let mut entries = which_key::hub_leader_entries();
         // Add context-specific entries based on active tool
         if let Some(idx) = self.active_tool {
-            if self.tools[idx].name() == "HTTP" {
-                entries.insert(0, which_key::WhichKeyEntry::action("e", "Toggle explorer"));
+            let tool_entries = self.tools[idx].which_key_entries();
+            for entry in tool_entries.into_iter().rev() {
+                entries.insert(0, entry);
             }
         }
         self.which_key.show("Leader", entries);
@@ -197,6 +198,15 @@ impl App {
 
     /// Handle a key press after the leader key.
     fn handle_leader_sequence(&mut self, c: char) {
+        // First try to delegate to the active tool
+        if let Some(idx) = self.active_tool {
+            if let Some(action) = self.tools[idx].handle_leader_action(c) {
+                self.process_action(action);
+                return;
+            }
+        }
+
+        // Hub-level leader sequences
         match c {
             't' => {
                 // Switch to Todo tool
@@ -210,22 +220,7 @@ impl App {
                     self.switch_to_tool(idx);
                 }
             }
-            'e' => {
-                // Toggle explorer sidebar (only when HTTP tool is active)
-                if let Some(idx) = self.tools.iter().position(|t| t.name() == "HTTP") {
-                    if self.active_tool == Some(idx) {
-                        self.delegate_leader_action_to_tool(idx, 'e');
-                    }
-                }
-            }
             _ => {}
-        }
-    }
-
-    /// Delegate a leader action to the active tool.
-    fn delegate_leader_action_to_tool(&mut self, idx: usize, key: char) {
-        if let Some(action) = self.tools[idx].handle_leader_action(key) {
-            self.process_action(action);
         }
     }
 
@@ -241,44 +236,47 @@ impl App {
                 self.reset_all_key_state();
 
                 // Process the which-key selection (top-level leader menu)
-                match c {
-                    'q' => {
-                        self.process_action(Action::Quit);
+                // First try to delegate to the active tool
+                let mut handled = false;
+                if let Some(idx) = self.active_tool {
+                    if let Some(action) = self.tools[idx].handle_leader_action(c) {
+                        self.process_action(action);
+                        handled = true;
                     }
-                    'f' => {
-                        self.open_telescope();
-                    }
-                    'h' => {
-                        // Switch to HTTP tool
-                        if let Some(idx) = self.tools.iter().position(|t| t.name() == "HTTP") {
-                            self.switch_to_tool(idx);
+                }
+
+                if !handled {
+                    match c {
+                        'q' => {
+                            self.process_action(Action::Quit);
                         }
-                    }
-                    't' => {
-                        // Switch to todo tool
-                        if let Some(idx) = self.tools.iter().position(|t| t.name() == "Todo") {
-                            self.switch_to_tool(idx);
+                        'f' => {
+                            self.open_telescope();
                         }
-                    }
-                    'e' => {
-                        // Toggle explorer sidebar (only when HTTP tool is active)
-                        if let Some(idx) = self.tools.iter().position(|t| t.name() == "HTTP") {
-                            if self.active_tool == Some(idx) {
-                                self.delegate_leader_action_to_tool(idx, 'e');
+                        'h' => {
+                            // Switch to HTTP tool
+                            if let Some(idx) = self.tools.iter().position(|t| t.name() == "HTTP") {
+                                self.switch_to_tool(idx);
                             }
                         }
+                        't' => {
+                            // Switch to todo tool
+                            if let Some(idx) = self.tools.iter().position(|t| t.name() == "Todo") {
+                                self.switch_to_tool(idx);
+                            }
+                        }
+                        '?' => {
+                            self.show_help();
+                        }
+                        ' ' => {
+                            self.open_tool_picker();
+                        }
+                        c @ '1'..='9' => {
+                            let idx = (c as u8 - b'1') as usize;
+                            self.switch_to_tool(idx);
+                        }
+                        _ => {}
                     }
-                    '?' => {
-                        self.show_help();
-                    }
-                    ' ' => {
-                        self.open_tool_picker();
-                    }
-                    c @ '1'..='9' => {
-                        let idx = (c as u8 - b'1') as usize;
-                        self.switch_to_tool(idx);
-                    }
-                    _ => {}
                 }
             }
             _ => {

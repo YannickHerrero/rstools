@@ -96,22 +96,60 @@ These MUST be consistent across ALL tools:
   - `o` — add todo below current
 
 ### HTTP (`rstools-http`)
-- Tables: `http_entries`
-- Model: id, parent_id, name, entry_type (folder/query), created_at, updated_at
+- Tables: `http_entries`, `http_requests`, `http_headers`, `http_query_params`
+- Models:
+  - `HttpEntry`: id, parent_id, name, entry_type (folder/query), created_at, updated_at
+  - `HttpRequest`: id, entry_id, method, url, body, created_at, updated_at
+  - `HttpHeader`: id, request_id, key, value, enabled, sort_order
+  - `HttpQueryParam`: id, request_id, key, value, enabled, sort_order
 - Tree structure: folders contain queries and sub-folders, like neo-tree
-- Sidebar: neo-tree style explorer (40 chars wide, toggle with `<Space>e`)
+- Layout: sidebar (40 chars, toggle with `<Space>e`) + content panel (request top / response bottom)
+- HTTP methods: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
+- Async requests via background tokio runtime with channel-based communication
+- Persistence: explicit save with `:w` (dirty indicator `[+]` shown in title)
+- JSON responses are auto-pretty-printed
 - Keybinds (Normal mode, sidebar focused):
   - `j/k` — move up/down
   - `h` — collapse folder / go to parent
-  - `l` / `Enter` — expand folder
+  - `l` / `Enter` — expand folder / open query in content panel
   - `gg` / `G` — go to top / bottom
   - `Ctrl-d` / `Ctrl-u` — half-page down / up
+  - `Ctrl-l` — move focus to content panel
   - `a` — add entry (supports paths like `group/api/get-user`)
   - `r` — rename selected entry
   - `d` — delete selected entry (with y/n confirmation)
   - `y` — copy selected entry to clipboard
   - `x` — cut selected entry to clipboard
   - `p` — paste from clipboard (recursive for folders)
+- Keybinds (Normal mode, content panel focused):
+  - `Tab` / `Shift-Tab` — cycle sections (URL → Params → Headers → Body)
+  - `Ctrl-h/j/k/l` — navigate between sections and panels
+  - `Ctrl-Enter` — send request
+  - `<Space>s` — send request (leader key)
+  - `m` / `M` — cycle HTTP method forward / backward
+  - `:w` — save request to database
+- Keybinds (URL section):
+  - `i` / `a` — enter insert mode to edit URL
+- Keybinds (Params / Headers sections):
+  - `j/k` — move up/down
+  - `a` — add new key-value row
+  - `i` / `Enter` — edit selected row (inline)
+  - `dd` — delete selected row
+  - `x` — toggle row enabled/disabled
+  - `Tab` (in edit mode) — switch between key and value fields
+- Keybinds (Body section):
+  - `i/a/A/I` — enter insert mode
+  - `o/O` — insert line below/above
+  - `hjkl` — cursor movement
+  - `0/$` — line start/end
+- Keybinds (Response panel):
+  - `j/k` — scroll response body/headers
+  - `gg/G` — go to top/bottom
+  - `Tab` — switch between Body and Headers tabs
+- Which-key (`<Space>h`):
+  - `s` — Send request
+  - `e` — Toggle sidebar
+  - `m` — Cycle method
 - Path creation rules:
   - `group/api/get-user` — intermediate segments become folders, last becomes query
   - `group/api/` — trailing slash creates all segments as folders
