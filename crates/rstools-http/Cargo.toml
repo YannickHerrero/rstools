@@ -1,0 +1,16 @@
+[package]
+name = "rstools-http"
+description = "HTTP client & API explorer tool for rstools with neo-tree style sidebar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+rstools-core.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+rusqlite.workspace = true
+chrono.workspace = true
+anyhow.workspace = true
+unicode-width.workspace = true

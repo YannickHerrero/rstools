@@ -1196,6 +1196,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rstools-http"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "crossterm",
+ "ratatui",
+ "rstools-core",
+ "rusqlite",
+ "unicode-width",
+]
+
+[[package]]
 name = "rstools-hub"
 version = "0.1.0"
 dependencies = [
@@ -1203,6 +1216,7 @@ dependencies = [
  "crossterm",
  "ratatui",
  "rstools-core",
+ "rstools-http",
  "rstools-todo",
  "rusqlite",
 ]

@@ -3,6 +3,7 @@ members = [
     "crates/rstools-core",
     "crates/rstools-hub",
     "crates/rstools-todo",
+    "crates/rstools-http",
 ]
 resolver = "2"
 
@@ -29,3 +30,4 @@ unicode-width = "0.2"
 # Internal crates
 rstools-core = { path = "crates/rstools-core" }
 rstools-todo = { path = "crates/rstools-todo" }
+rstools-http = { path = "crates/rstools-http" }
