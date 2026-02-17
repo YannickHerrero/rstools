@@ -33,6 +33,10 @@ pub trait Tool {
     /// Render the tool's UI into the given area.
     fn render(&self, frame: &mut Frame, area: Rect);
 
+    /// Reset any pending key state (leader, multi-key sequences).
+    /// Called by the hub when it takes over input (overlays open/close).
+    fn reset_key_state(&mut self) {}
+
     /// Called when the tool becomes the active view.
     fn on_focus(&mut self) {}
 

@@ -450,6 +450,10 @@ impl Tool for TodoTool {
         }
     }
 
+    fn reset_key_state(&mut self) {
+        self.key_state.reset();
+    }
+
     fn on_focus(&mut self) {
         let _ = self.reload();
     }

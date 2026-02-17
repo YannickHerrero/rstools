@@ -4,7 +4,7 @@ use ratatui::{layout::Rect, Frame};
 use rusqlite::Connection;
 
 use rstools_core::{
-    keybinds::{Action, InputMode},
+    keybinds::{Action, InputMode, KeyState},
     telescope::{Telescope, TelescopeItem},
     tool::Tool,
     ui,
@@ -29,6 +29,8 @@ pub struct App {
     command_input: String,
     /// Command-line cursor position.
     command_cursor: usize,
+    /// Key state for dashboard (persistent so gg/dd work).
+    key_state: KeyState,
 }
 
 impl App {
@@ -43,6 +45,16 @@ impl App {
             telescope: Telescope::new(),
             command_input: String::new(),
             command_cursor: 0,
+            key_state: KeyState::default(),
+        }
+    }
+
+    /// Reset all pending key state (hub + active tool).
+    /// Called when the hub takes over input for overlays.
+    fn reset_all_key_state(&mut self) {
+        self.key_state.reset();
+        if let Some(idx) = self.active_tool {
+            self.tools[idx].reset_key_state();
         }
     }
 
@@ -152,6 +164,7 @@ impl App {
 
     /// Show the leader key which-key menu.
     fn show_leader_menu(&mut self) {
+        self.reset_all_key_state();
         let entries = which_key::hub_leader_entries();
         // Add tool-specific groups
         for (i, tool) in self.tools.iter().enumerate() {
@@ -185,9 +198,11 @@ impl App {
         match key.code {
             KeyCode::Esc => {
                 self.which_key.hide();
+                self.reset_all_key_state();
             }
             KeyCode::Char(c) => {
                 self.which_key.hide();
+                self.reset_all_key_state();
                 // Process the which-key selection
                 match c {
                     'q' => {
@@ -214,6 +229,7 @@ impl App {
             }
             _ => {
                 self.which_key.hide();
+                self.reset_all_key_state();
             }
         }
     }
@@ -223,11 +239,13 @@ impl App {
         match key.code {
             KeyCode::Esc => {
                 self.telescope.close();
+                self.reset_all_key_state();
             }
             KeyCode::Enter => {
                 if let Some(id) = self.telescope.selected_id() {
                     let id = id.to_string();
                     self.telescope.close();
+                    self.reset_all_key_state();
                     self.handle_telescope_selection(&id);
                 }
             }
@@ -336,11 +354,9 @@ impl App {
 
     /// Handle keys when on the dashboard (no tool active).
     fn handle_dashboard_key(&mut self, key: KeyEvent) {
-        use rstools_core::keybinds::{process_normal_key, KeyState};
+        use rstools_core::keybinds::process_normal_key;
 
-        // Use a temporary key state for dashboard
-        let mut key_state = KeyState::default();
-        let action = process_normal_key(key, &mut key_state);
+        let action = process_normal_key(key, &mut self.key_state);
         self.process_action(action);
     }
 
