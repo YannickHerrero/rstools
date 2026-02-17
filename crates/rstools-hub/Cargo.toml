@@ -16,3 +16,4 @@ rstools-todo.workspace = true
 ratatui.workspace = true
 crossterm.workspace = true
 anyhow.workspace = true
+rusqlite.workspace = true
