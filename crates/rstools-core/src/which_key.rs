@@ -1,6 +1,6 @@
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
     Frame,
@@ -93,19 +93,17 @@ impl WhichKey {
             .entries
             .iter()
             .map(|entry| {
-                let key_style = Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD);
+                let key_style = Style::default().add_modifier(Modifier::BOLD);
                 let desc_style = if entry.is_group {
-                    Style::default().fg(Color::Cyan)
+                    Style::default().add_modifier(Modifier::UNDERLINED)
                 } else {
-                    Style::default().fg(Color::White)
+                    Style::default()
                 };
                 let suffix = if entry.is_group { " +" } else { "" };
 
                 Line::from(vec![
                     Span::styled(format!("  {} ", entry.key), key_style),
-                    Span::styled("-> ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("-> ", Style::default().add_modifier(Modifier::DIM)),
                     Span::styled(format!("{}{}", entry.description, suffix), desc_style),
                 ])
             })
@@ -114,8 +112,7 @@ impl WhichKey {
         let block = Block::default()
             .title(format!(" {} ", self.title))
             .title_alignment(Alignment::Center)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow));
+            .borders(Borders::ALL);
 
         let paragraph = Paragraph::new(lines).block(block);
         frame.render_widget(paragraph, popup_area);

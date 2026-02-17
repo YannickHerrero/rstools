@@ -1,7 +1,7 @@
 use crate::keybinds::InputMode;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Tabs},
     Frame,
@@ -14,12 +14,8 @@ pub fn render_tab_bar(frame: &mut Frame, area: Rect, tools: &[&str], active: usi
 
     let tabs = Tabs::new(titles)
         .select(active)
-        .highlight_style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )
-        .style(Style::default().fg(Color::DarkGray))
+        .highlight_style(Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED))
+        .style(Style::default().add_modifier(Modifier::DIM))
         .divider(Span::raw(" | "));
 
     frame.render_widget(tabs, area);
@@ -34,27 +30,27 @@ pub fn render_status_bar(
     info: &str,
 ) {
     let mode_style = match mode {
-        InputMode::Normal => Style::default().fg(Color::Black).bg(Color::Blue),
-        InputMode::Insert => Style::default().fg(Color::Black).bg(Color::Green),
-        InputMode::Command => Style::default().fg(Color::Black).bg(Color::Yellow),
+        InputMode::Normal => Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED),
+        InputMode::Insert => Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED),
+        InputMode::Command => Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED),
     };
 
     let line = Line::from(vec![
         Span::styled(format!(" {} ", mode.label()), mode_style),
         Span::raw(" "),
-        Span::styled(tool_name, Style::default().fg(Color::Cyan)),
+        Span::styled(tool_name, Style::default().add_modifier(Modifier::BOLD)),
         Span::raw("  "),
-        Span::styled(info, Style::default().fg(Color::DarkGray)),
+        Span::styled(info, Style::default().add_modifier(Modifier::DIM)),
     ]);
 
-    let bar = Paragraph::new(line).style(Style::default().bg(Color::Rgb(30, 30, 30)));
+    let bar = Paragraph::new(line).style(Style::default().add_modifier(Modifier::REVERSED));
     frame.render_widget(bar, area);
 }
 
 /// Render the command-line input at the bottom of the screen.
 pub fn render_command_line(frame: &mut Frame, area: Rect, input: &str, cursor: usize) {
     let line = Line::from(vec![
-        Span::styled(":", Style::default().fg(Color::Yellow)),
+        Span::styled(":", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw(input),
     ]);
 
@@ -83,5 +79,5 @@ pub fn tool_block(title: &str) -> Block<'_> {
     Block::default()
         .title(format!(" {} ", title))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray))
+        .border_style(Style::default().add_modifier(Modifier::DIM))
 }

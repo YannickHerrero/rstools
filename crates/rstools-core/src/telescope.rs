@@ -1,6 +1,6 @@
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
     Frame,
@@ -191,11 +191,10 @@ impl Telescope {
         // Search input
         let input_block = Block::default()
             .title(format!(" {} ", self.title))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan));
+            .borders(Borders::ALL);
 
         let input_text = Paragraph::new(Line::from(vec![
-            Span::styled("> ", Style::default().fg(Color::Cyan)),
+            Span::styled("> ", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(&self.query),
         ]))
         .block(input_block);
@@ -220,7 +219,7 @@ impl Telescope {
                         Span::styled(&item.label, Style::default().add_modifier(Modifier::BOLD)),
                         Span::styled(
                             format!("  {}", item.description),
-                            Style::default().fg(Color::DarkGray),
+                            Style::default().add_modifier(Modifier::DIM),
                         ),
                     ])
                 };
@@ -228,17 +227,12 @@ impl Telescope {
             })
             .collect();
 
-        let results_block = Block::default()
-            .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
-            .border_style(Style::default().fg(Color::Cyan));
+        let results_block =
+            Block::default().borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM);
 
         let results = List::new(items)
             .block(results_block)
-            .highlight_style(
-                Style::default()
-                    .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .highlight_style(Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED))
             .highlight_symbol("> ");
 
         frame.render_stateful_widget(results, results_area, &mut self.list_state);

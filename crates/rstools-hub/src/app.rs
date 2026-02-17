@@ -440,7 +440,7 @@ impl App {
     fn render_dashboard(&self, frame: &mut Frame, area: Rect) {
         use ratatui::{
             layout::{Alignment, Constraint, Layout},
-            style::{Color, Modifier, Style},
+            style::{Modifier, Style},
             text::{Line, Span},
             widgets::Paragraph,
         };
@@ -449,31 +449,32 @@ impl App {
             Line::from(""),
             Line::from(Span::styled(
                 "rstools",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
             Line::from(Span::styled(
                 "A vim-centric terminal toolset",
-                Style::default().fg(Color::DarkGray),
+                Style::default().add_modifier(Modifier::DIM),
             )),
             Line::from(""),
             Line::from(""),
             Line::from(vec![
-                Span::styled("  <Space> ", Style::default().fg(Color::Yellow)),
+                Span::styled("  <Space> ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw("  Open leader menu"),
             ]),
             Line::from(vec![
-                Span::styled("  <Space><Space> ", Style::default().fg(Color::Yellow)),
+                Span::styled(
+                    "  <Space><Space> ",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
                 Span::raw("  Tool picker"),
             ]),
             Line::from(vec![
-                Span::styled("  <Space>f ", Style::default().fg(Color::Yellow)),
+                Span::styled("  <Space>f ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw("  Find (telescope)"),
             ]),
             Line::from(vec![
-                Span::styled("  :q ", Style::default().fg(Color::Yellow)),
+                Span::styled("  :q ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw("  Quit"),
             ]),
             Line::from(""),
@@ -485,23 +486,22 @@ impl App {
         if !self.tools.is_empty() {
             all_lines.push(Line::from(Span::styled(
                 "Available tools:",
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().add_modifier(Modifier::BOLD),
             )));
             all_lines.push(Line::from(""));
             for (i, tool) in self.tools.iter().enumerate() {
                 all_lines.push(Line::from(vec![
-                    Span::styled(format!("  {} ", i + 1), Style::default().fg(Color::Yellow)),
+                    Span::styled(
+                        format!("  {} ", i + 1),
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled(
                         tool.name(),
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
+                        Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
                     ),
                     Span::styled(
                         format!("  {}", tool.description()),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().add_modifier(Modifier::DIM),
                     ),
                 ]));
             }

@@ -1,6 +1,6 @@
 use ratatui::{
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
@@ -25,20 +25,18 @@ pub fn render_todo_list(
         .map(|todo| {
             let checkbox = if todo.completed { "[x]" } else { "[ ]" };
             let style = if todo.completed {
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::CROSSED_OUT)
+                Style::default().add_modifier(Modifier::DIM | Modifier::CROSSED_OUT)
             } else {
-                Style::default().fg(Color::White)
+                Style::default()
             };
 
             let mut spans = vec![
                 Span::styled(
                     format!("{} ", checkbox),
                     if todo.completed {
-                        Style::default().fg(Color::Green)
+                        Style::default().add_modifier(Modifier::DIM)
                     } else {
-                        Style::default().fg(Color::DarkGray)
+                        Style::default().add_modifier(Modifier::DIM)
                     },
                 ),
                 Span::styled(&todo.title, style),
@@ -48,7 +46,7 @@ pub fn render_todo_list(
                 if !desc.is_empty() {
                     spans.push(Span::styled(
                         format!("  {}", desc),
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().add_modifier(Modifier::DIM),
                     ));
                 }
             }
@@ -66,15 +64,11 @@ pub fn render_todo_list(
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().add_modifier(Modifier::DIM));
 
     let list = List::new(items)
         .block(block)
-        .highlight_style(
-            Style::default()
-                .bg(Color::Rgb(40, 40, 60))
-                .add_modifier(Modifier::BOLD),
-        )
+        .highlight_style(Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED))
         .highlight_symbol("> ");
 
     frame.render_stateful_widget(list, list_area, list_state);
@@ -84,15 +78,15 @@ pub fn render_todo_list(
     let info = Paragraph::new(Line::from(vec![
         Span::styled(
             format!(" {} items", todos.len()),
-            Style::default().fg(Color::DarkGray),
+            Style::default().add_modifier(Modifier::DIM),
         ),
         Span::styled(
             format!("  {} done", count_done),
-            Style::default().fg(Color::Green),
+            Style::default().add_modifier(Modifier::DIM),
         ),
         Span::styled(
             "  a:add  e:edit  dd:del  Enter:toggle  /:filter",
-            Style::default().fg(Color::DarkGray),
+            Style::default().add_modifier(Modifier::DIM),
         ),
     ]));
     frame.render_widget(info, info_area);
@@ -102,8 +96,7 @@ pub fn render_todo_list(
 pub fn render_todo_input(frame: &mut Frame, area: Rect, prompt: &str, input: &str, cursor: usize) {
     let block = Block::default()
         .title(format!(" {} ", prompt))
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Green));
+        .borders(Borders::ALL);
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
