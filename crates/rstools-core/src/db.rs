@@ -29,7 +29,7 @@ pub fn open_db() -> Result<Connection> {
     Ok(conn)
 }
 
-#[cfg(test)]
+/// Open an in-memory database for testing.
 pub fn open_memory_db() -> Result<Connection> {
     let conn = Connection::open_in_memory()?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
