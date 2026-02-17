@@ -95,7 +95,11 @@ These MUST be consistent across ALL tools:
 
 ## Commit Conventions
 
-- Commit after each logical step
+- **Commit after each significant step** when building a feature — do NOT wait
+  until the entire feature is done. For example, if implementing a new popup:
+  commit after creating the module, commit after wiring it up, commit after
+  adding tool-specific support, etc. Each commit should represent a coherent,
+  compilable step.
 - Use conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`
 - Keep which-key, README, and AGENTS.md updated with every change that affects
   keybinds or tool registration
