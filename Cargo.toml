@@ -1,0 +1,31 @@
+[workspace]
+members = [
+    "crates/rstools-core",
+    "crates/rstools-hub",
+    "crates/rstools-todo",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["yherrero"]
+
+[workspace.dependencies]
+# TUI
+ratatui = "0.30"
+crossterm = "0.29"
+
+# Database
+rusqlite = { version = "0.38", features = ["bundled"] }
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+directories = "6"
+anyhow = "1"
+unicode-width = "0.2"
+
+# Internal crates
+rstools-core = { path = "crates/rstools-core" }
+rstools-todo = { path = "crates/rstools-todo" }
