@@ -40,6 +40,13 @@ pub trait Tool {
     /// Render the tool's UI into the given area.
     fn render(&self, frame: &mut Frame, area: Rect);
 
+    /// Handle a leader key action that the hub delegates back to the tool.
+    /// Called when the hub determines a leader sequence belongs to this tool.
+    /// Returns an Action if the tool handled it, None otherwise.
+    fn handle_leader_action(&mut self, _key: char) -> Option<Action> {
+        None
+    }
+
     /// Reset any pending key state (leader, multi-key sequences).
     /// Called by the hub when it takes over input (overlays open/close).
     fn reset_key_state(&mut self) {}

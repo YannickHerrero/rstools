@@ -11,6 +11,7 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 
 use rstools_core::db;
+use rstools_http::HttpTool;
 use rstools_todo::TodoTool;
 
 use app::App;
@@ -24,8 +25,11 @@ fn main() -> Result<()> {
     let todo_conn = db::open_db()?;
     let todo = TodoTool::new(todo_conn)?;
 
+    let http_conn = db::open_db()?;
+    let http = HttpTool::new(http_conn)?;
+
     // Build the app
-    let mut app = App::new(vec![Box::new(todo)]);
+    let mut app = App::new(vec![Box::new(todo), Box::new(http)]);
     app.init_db(&conn)?;
 
     // Setup terminal

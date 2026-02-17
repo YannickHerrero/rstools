@@ -492,6 +492,38 @@ impl Tool for HttpTool {
         }
     }
 
+    fn handle_leader_action(&mut self, key: char) -> Option<Action> {
+        match key {
+            'e' => {
+                self.sidebar.visible = !self.sidebar.visible;
+                Some(Action::None)
+            }
+            'a' => {
+                if self.sidebar.visible {
+                    self.sidebar.start_add();
+                    self.mode = InputMode::Insert;
+                }
+                Some(Action::None)
+            }
+            'd' => {
+                if self.sidebar.visible {
+                    self.sidebar.start_delete();
+                }
+                Some(Action::None)
+            }
+            'r' => {
+                if self.sidebar.visible {
+                    self.sidebar.start_rename();
+                    if self.sidebar.input_mode == SidebarInput::Renaming {
+                        self.mode = InputMode::Insert;
+                    }
+                }
+                Some(Action::None)
+            }
+            _ => None,
+        }
+    }
+
     fn render(&self, frame: &mut Frame, area: Rect) {
         ui::render_http_tool(frame, area, &self.sidebar);
     }

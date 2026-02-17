@@ -202,12 +202,43 @@ impl App {
                     }
                 }
             }
+            'h' => {
+                // Show HTTP sub-menu or switch to HTTP
+                if let Some(idx) = self.tools.iter().position(|t| t.name() == "HTTP") {
+                    let entries = self.tools[idx].which_key_entries();
+                    if entries.is_empty() {
+                        self.switch_to_tool(idx);
+                    } else {
+                        self.which_key.show("HTTP", entries);
+                    }
+                }
+            }
+            'e' => {
+                // Toggle explorer sidebar (HTTP tool specific)
+                // If HTTP tool is active, delegate to it; otherwise switch to it
+                if let Some(idx) = self.tools.iter().position(|t| t.name() == "HTTP") {
+                    if self.active_tool == Some(idx) {
+                        self.delegate_leader_action_to_tool(idx, 'e');
+                    } else {
+                        self.switch_to_tool(idx);
+                    }
+                }
+            }
             _ => {}
+        }
+    }
+
+    /// Delegate a leader action to the active tool.
+    fn delegate_leader_action_to_tool(&mut self, idx: usize, key: char) {
+        if let Some(action) = self.tools[idx].handle_leader_action(key) {
+            self.process_action(action);
         }
     }
 
     /// Handle input while which-key is visible.
     fn handle_which_key_input(&mut self, key: KeyEvent) {
+        let current_title = self.which_key.title.clone();
+
         match key.code {
             KeyCode::Esc => {
                 self.which_key.hide();
@@ -216,7 +247,20 @@ impl App {
             KeyCode::Char(c) => {
                 self.which_key.hide();
                 self.reset_all_key_state();
-                // Process the which-key selection
+
+                // If we're in a tool-specific sub-menu, delegate to that tool
+                if current_title == "HTTP" {
+                    if let Some(idx) = self.tools.iter().position(|t| t.name() == "HTTP") {
+                        // Switch to the tool first if not already active
+                        if self.active_tool != Some(idx) {
+                            self.switch_to_tool(idx);
+                        }
+                        self.delegate_leader_action_to_tool(idx, c);
+                        return;
+                    }
+                }
+
+                // Process the which-key selection (top-level leader menu)
                 match c {
                     'q' => {
                         self.process_action(Action::Quit);
@@ -224,10 +268,26 @@ impl App {
                     'f' => {
                         self.open_telescope();
                     }
+                    'h' => {
+                        // Show HTTP sub-menu
+                        if let Some(idx) = self.tools.iter().position(|t| t.name() == "HTTP") {
+                            let entries = self.tools[idx].which_key_entries();
+                            self.which_key.show("HTTP", entries);
+                        }
+                    }
                     't' => {
                         // Switch to todo tool
                         if let Some(idx) = self.tools.iter().position(|t| t.name() == "Todo") {
                             self.switch_to_tool(idx);
+                        }
+                    }
+                    'e' => {
+                        // Toggle explorer sidebar — delegate to HTTP tool
+                        if let Some(idx) = self.tools.iter().position(|t| t.name() == "HTTP") {
+                            if self.active_tool != Some(idx) {
+                                self.switch_to_tool(idx);
+                            }
+                            self.delegate_leader_action_to_tool(idx, 'e');
                         }
                     }
                     '?' => {
