@@ -4,6 +4,7 @@ use ratatui::{layout::Rect, Frame};
 use rusqlite::Connection;
 
 use rstools_core::{
+    help_popup::{self, HelpPopup},
     keybinds::{Action, InputMode, KeyState},
     telescope::{Telescope, TelescopeItem},
     tool::Tool,
@@ -23,6 +24,8 @@ pub struct App {
     mode: InputMode,
     /// Which-key popup state.
     which_key: WhichKey,
+    /// Help popup state.
+    help_popup: HelpPopup,
     /// Telescope overlay state.
     telescope: Telescope,
     /// Command-line input buffer.
@@ -42,6 +45,7 @@ impl App {
             should_quit: false,
             mode: InputMode::Normal,
             which_key: WhichKey::new(),
+            help_popup: HelpPopup::new(),
             telescope: Telescope::new(),
             command_input: String::new(),
             command_cursor: 0,
@@ -84,6 +88,12 @@ impl App {
             // Handle which-key if active
             if self.which_key.visible {
                 self.handle_which_key_input(key);
+                return;
+            }
+
+            // Handle help popup if active
+            if self.help_popup.visible {
+                self.handle_help_key(key);
                 return;
             }
 
@@ -158,6 +168,9 @@ impl App {
             Action::Telescope => {
                 self.open_telescope();
             }
+            Action::Help => {
+                self.show_help();
+            }
             _ => {}
         }
     }
@@ -216,6 +229,9 @@ impl App {
                         if let Some(idx) = self.tools.iter().position(|t| t.name() == "Todo") {
                             self.switch_to_tool(idx);
                         }
+                    }
+                    '?' => {
+                        self.show_help();
                     }
                     ' ' => {
                         self.open_tool_picker();
@@ -407,6 +423,57 @@ impl App {
         self.telescope.open("Find", items);
     }
 
+    /// Show the help popup with global + tool-specific keybinds.
+    fn show_help(&mut self) {
+        self.reset_all_key_state();
+        let mut entries = Vec::new();
+
+        // Add tool-specific entries first (if a tool is active)
+        if let Some(idx) = self.active_tool {
+            let tool_entries = self.tools[idx].help_entries();
+            if !tool_entries.is_empty() {
+                entries.extend(tool_entries);
+            }
+        }
+
+        // Add global entries
+        entries.extend(help_popup::global_help_entries());
+
+        let title = match self.active_tool {
+            Some(idx) => format!("{} Help", self.tools[idx].name()),
+            None => "Help".to_string(),
+        };
+
+        self.help_popup.show(title, entries);
+    }
+
+    /// Handle key events while the help popup is visible.
+    fn handle_help_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => {
+                self.help_popup.hide();
+                self.reset_all_key_state();
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.help_popup.scroll_down();
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.help_popup.scroll_up();
+            }
+            KeyCode::Char('d') if key.modifiers == KeyModifiers::CONTROL => {
+                for _ in 0..10 {
+                    self.help_popup.scroll_down();
+                }
+            }
+            KeyCode::Char('u') if key.modifiers == KeyModifiers::CONTROL => {
+                for _ in 0..10 {
+                    self.help_popup.scroll_up();
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Render the entire application.
     pub fn render(&mut self, frame: &mut Frame) {
         let area = frame.area();
@@ -449,6 +516,7 @@ impl App {
 
         // Overlays (rendered last, on top)
         self.which_key.render(frame, area);
+        self.help_popup.render(frame, area);
         self.telescope.render(frame, area);
     }
 

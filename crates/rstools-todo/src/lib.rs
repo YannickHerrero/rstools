@@ -10,6 +10,7 @@ use ratatui::{
 use rusqlite::Connection;
 
 use rstools_core::{
+    help_popup::HelpEntry,
     keybinds::{process_normal_key, Action, InputMode, KeyState},
     telescope::TelescopeItem,
     tool::Tool,
@@ -305,6 +306,17 @@ impl Tool for TodoTool {
         vec![
             WhichKeyEntry::action("a", "Add todo"),
             WhichKeyEntry::action("d", "Delete todo"),
+        ]
+    }
+
+    fn help_entries(&self) -> Vec<HelpEntry> {
+        vec![
+            HelpEntry::with_section("Todo", "a / o", "Add new todo / add below"),
+            HelpEntry::with_section("Todo", "e", "Edit selected todo"),
+            HelpEntry::with_section("Todo", "Enter", "Toggle complete"),
+            HelpEntry::with_section("Todo", "dd", "Delete todo"),
+            HelpEntry::with_section("Todo", "/", "Filter todos"),
+            HelpEntry::with_section("Todo", "Esc", "Cancel input / clear filter"),
         ]
     }
 

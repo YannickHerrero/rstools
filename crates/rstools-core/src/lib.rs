@@ -1,4 +1,5 @@
 pub mod db;
+pub mod help_popup;
 pub mod keybinds;
 pub mod telescope;
 pub mod tool;

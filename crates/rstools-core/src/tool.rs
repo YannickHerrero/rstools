@@ -1,3 +1,4 @@
+use crate::help_popup::HelpEntry;
 use crate::keybinds::{Action, InputMode};
 use crate::telescope::TelescopeItem;
 use crate::which_key::WhichKeyEntry;
@@ -26,6 +27,12 @@ pub trait Tool {
 
     /// Items this tool contributes to telescope search.
     fn telescope_items(&self) -> Vec<TelescopeItem>;
+
+    /// Help entries specific to this tool (shown alongside global keybinds).
+    /// Override this to add tool-specific keybind documentation.
+    fn help_entries(&self) -> Vec<HelpEntry> {
+        Vec::new()
+    }
 
     /// Handle a key event. Returns an Action describing what happened.
     fn handle_key(&mut self, key: KeyEvent) -> Action;
