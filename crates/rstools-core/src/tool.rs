@@ -1,4 +1,4 @@
-use crate::keybinds::Action;
+use crate::keybinds::{Action, InputMode};
 use crate::telescope::TelescopeItem;
 use crate::which_key::WhichKeyEntry;
 use crossterm::event::KeyEvent;
@@ -13,6 +13,9 @@ pub trait Tool {
 
     /// Short description for the tool picker.
     fn description(&self) -> &str;
+
+    /// The tool's current input mode (for status bar display).
+    fn mode(&self) -> InputMode;
 
     /// Initialize the tool's database tables if they don't exist.
     fn init_db(&self, conn: &Connection) -> anyhow::Result<()>;

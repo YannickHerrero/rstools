@@ -293,6 +293,10 @@ impl Tool for TodoTool {
         "Minimalist todo list"
     }
 
+    fn mode(&self) -> InputMode {
+        self.mode
+    }
+
     fn init_db(&self, conn: &Connection) -> anyhow::Result<()> {
         model::init_db(conn)
     }

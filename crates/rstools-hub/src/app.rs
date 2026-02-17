@@ -419,8 +419,11 @@ impl App {
                 .map(|i| self.tools[i].name())
                 .unwrap_or("Dashboard");
 
-            // Get mode from active tool if it has its own mode tracking
-            let mode = self.mode;
+            // Get mode from active tool for accurate status bar
+            let mode = match self.active_tool {
+                Some(idx) => self.tools[idx].mode(),
+                None => self.mode,
+            };
             let info = match self.active_tool {
                 Some(_) => "Space: leader  ?:help  :q: close",
                 None => "Space: leader  ?:help  :q: quit",
