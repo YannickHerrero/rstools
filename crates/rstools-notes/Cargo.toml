@@ -1,0 +1,16 @@
+[package]
+name = "rstools-notes"
+description = "Notes tool for rstools with vim-like editor and tree sidebar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+rstools-core.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+rusqlite.workspace = true
+chrono.workspace = true
+anyhow.workspace = true
+unicode-width.workspace = true
