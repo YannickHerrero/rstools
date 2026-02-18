@@ -1152,7 +1152,7 @@ impl Tool for KeePassTool {
         }
 
         let sidebar_width = if self.sidebar.visible {
-            ui::SIDEBAR_WIDTH.min(area.width.saturating_sub(20))
+            ui::sidebar_width(&self.sidebar).min(area.width.saturating_sub(20))
         } else {
             0
         };

@@ -164,9 +164,8 @@ These MUST be consistent across ALL tools:
 - Model: id, file_path, display_name, encrypted_password, pin_salt, pin_nonce,
   pin_expires_at, last_opened_at, created_at, updated_at
 - Read-only KDBX4 vault viewer using the `keepass` crate
-- Layout: sidebar (40 chars, toggle with `<Space>ke`) + tree panel (40%) + detail panel (60%)
+- Layout: sidebar (dynamic width, max 40 chars, toggle with `<Space>ke`) + tree panel (40%) + detail panel (60%)
 - Sidebar shows previously opened .kdbx files, ordered most-recently-opened first
-- `[PIN]` indicator on files with active PIN quick-access
 - Recycle Bin group is hidden from the tree
 - Password fields masked with dots, toggled with `p`
 - Security: best-effort zeroize via `zeroize` crate, AES-256-GCM PIN encryption via `aes-gcm` + `argon2`

@@ -10,14 +10,32 @@ use ratatui::{
     Frame,
 };
 
-/// Fixed sidebar width in characters.
-pub const SIDEBAR_WIDTH: u16 = 40;
+/// Maximum sidebar width in characters.
+const MAX_SIDEBAR_WIDTH: u16 = 40;
+
+/// Minimum sidebar width in characters (enough for the empty-state help text).
+const MIN_SIDEBAR_WIDTH: u16 = 22;
+
+/// Compute the sidebar width based on the longest file name, capped at [`MAX_SIDEBAR_WIDTH`].
+/// Adds 4 chars of padding (2 for border, 2 for inner margin).
+pub fn sidebar_width(sidebar: &SidebarState) -> u16 {
+    if sidebar.files.is_empty() {
+        return MIN_SIDEBAR_WIDTH;
+    }
+    let longest = sidebar
+        .files
+        .iter()
+        .map(|f| f.display_name.len() as u16)
+        .max()
+        .unwrap_or(0);
+    // +4: 2 for block borders, 2 for inner padding (" name")
+    (longest + 4).clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
+}
 
 // ── Colors ───────────────────────────────────────────────────────────
 
 const COLOR_GROUP: Color = Color::Blue;
 const COLOR_ENTRY: Color = Color::Green;
-const COLOR_PIN_INDICATOR: Color = Color::Yellow;
 const COLOR_LABEL: Color = Color::Cyan;
 const COLOR_MASKED: Color = Color::DarkGray;
 const COLOR_TAG: Color = Color::Magenta;
@@ -30,7 +48,7 @@ pub fn render_keepass_tool(frame: &mut Frame, area: Rect, tool: &KeePassTool) {
     let base_area = area;
 
     if tool.sidebar.visible {
-        let sidebar_width = SIDEBAR_WIDTH.min(area.width.saturating_sub(20));
+        let sidebar_width = sidebar_width(&tool.sidebar).min(area.width.saturating_sub(20));
         let sidebar_area = Rect {
             x: area.x,
             y: area.y,
@@ -129,27 +147,7 @@ fn render_sidebar(frame: &mut Frame, area: Rect, sidebar: &SidebarState, focused
                 Color::Reset
             };
 
-            let mut spans = Vec::new();
-
-            // PIN indicator
-            if file.has_pin {
-                if let Some(ref expires) = file.pin_expires_at {
-                    if !crate::crypto::is_pin_expired(expires) {
-                        spans.push(Span::styled(
-                            " [PIN] ",
-                            Style::default().fg(COLOR_PIN_INDICATOR).bg(bg),
-                        ));
-                    } else {
-                        spans.push(Span::styled("       ", Style::default().bg(bg)));
-                    }
-                } else {
-                    spans.push(Span::styled("       ", Style::default().bg(bg)));
-                }
-            } else {
-                spans.push(Span::styled("       ", Style::default().bg(bg)));
-            }
-
-            // File name
+            // File name with left padding
             let name_style = if is_selected {
                 Style::default()
                     .fg(Color::White)
@@ -158,7 +156,10 @@ fn render_sidebar(frame: &mut Frame, area: Rect, sidebar: &SidebarState, focused
             } else {
                 Style::default().fg(Color::White).bg(bg)
             };
-            spans.push(Span::styled(&file.display_name, name_style));
+            let spans = vec![
+                Span::styled(" ", Style::default().bg(bg)),
+                Span::styled(&file.display_name, name_style),
+            ];
 
             Line::from(spans)
         })
