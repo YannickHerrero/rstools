@@ -2230,6 +2230,7 @@ dependencies = [
  "rstools-core",
  "rstools-http",
  "rstools-keepass",
+ "rstools-notes",
  "rstools-todo",
  "rusqlite",
 ]

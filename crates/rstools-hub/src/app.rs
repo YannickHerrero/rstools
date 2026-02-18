@@ -2,7 +2,7 @@ use anyhow::Result;
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
-use ratatui::{Frame, layout::Rect};
+use ratatui::{layout::Rect, Frame};
 use rusqlite::Connection;
 
 use rstools_core::{
@@ -235,6 +235,12 @@ impl App {
                     self.switch_to_tool(idx);
                 }
             }
+            'n' => {
+                // Switch to Notes tool
+                if let Some(idx) = self.tools.iter().position(|t| t.name() == "Notes") {
+                    self.switch_to_tool(idx);
+                }
+            }
             _ => {}
         }
     }
@@ -284,6 +290,12 @@ impl App {
                             // Switch to KeePass tool
                             if let Some(idx) = self.tools.iter().position(|t| t.name() == "KeePass")
                             {
+                                self.switch_to_tool(idx);
+                            }
+                        }
+                        'n' => {
+                            // Switch to Notes tool
+                            if let Some(idx) = self.tools.iter().position(|t| t.name() == "Notes") {
                                 self.switch_to_tool(idx);
                             }
                         }
