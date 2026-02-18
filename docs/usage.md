@@ -10,6 +10,19 @@ out of the main README.
 - **Global fuzzy find**: `<Space><Space>` opens the tool picker.
 - **Modal quit**: `:q` closes current context, `:qa` quits all.
 
+## Demo Mode
+
+Use demo mode when taking screenshots:
+
+```bash
+rstools --demo
+```
+
+- Uses an isolated database at `./.demo/rstools-demo.db`.
+- Seeds Todo, HTTP, and KeePass mock data (idempotent).
+- Demo KeePass files under `/demo/vaults/*.kdbx` open directly with in-memory sample entries.
+- Keeps your regular `~/.local/share/rstools/rstools.db` untouched.
+
 ## Global
 
 ### Global Keys

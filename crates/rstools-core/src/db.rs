@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use rusqlite::Connection;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Returns the path to the shared rstools database.
 /// Location: `~/.local/share/rstools/rstools.db` (XDG-compliant)
@@ -18,7 +18,13 @@ pub fn db_path() -> Result<PathBuf> {
 /// Enables WAL mode for better concurrent read performance.
 pub fn open_db() -> Result<Connection> {
     let path = db_path()?;
-    let conn = Connection::open(&path)
+    open_db_at(&path)
+}
+
+/// Opens (or creates) a SQLite database at a specific path.
+/// Enables WAL mode and foreign keys.
+pub fn open_db_at(path: &Path) -> Result<Connection> {
+    let conn = Connection::open(path)
         .with_context(|| format!("Failed to open database at {}", path.display()))?;
 
     // Enable WAL mode for better performance

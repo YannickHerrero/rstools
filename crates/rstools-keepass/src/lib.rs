@@ -21,7 +21,7 @@ use zeroize::Zeroize;
 
 use detail::DetailPanel;
 use sidebar::SidebarState;
-use vault::{SearchableEntry, VaultState};
+use vault::{EntryDetails, NodeType, SearchableEntry, VaultNode, VaultState};
 
 // ── Auto-lock timeout ────────────────────────────────────────────────
 
@@ -157,6 +157,11 @@ impl KeePassTool {
     fn start_open_file(&mut self, file_path: &str) {
         let path = shellexpand(file_path);
 
+        if is_demo_vault_path(&path) {
+            self.open_demo_vault(&path);
+            return;
+        }
+
         // Check if this file has a valid PIN stored
         if let Ok(Some(file)) = model::get_file_by_path(&self.conn, &path) {
             if file.has_pin {
@@ -190,6 +195,84 @@ impl KeePassTool {
             file_path: path,
             error: None,
         });
+    }
+
+    /// Open an in-memory demo vault for screenshot/demo mode.
+    fn open_demo_vault(&mut self, file_path: &str) {
+        let roots = vec![
+            VaultNode {
+                name: "Internet".to_string(),
+                node_type: NodeType::Group,
+                expanded: true,
+                details: None,
+                children: vec![
+                    demo_entry(
+                        "GitHub",
+                        "ari-demo",
+                        "ghp_demo_7Jf9mQwQ2aR",
+                        "https://github.com/login",
+                        "Demo account used for screenshots.",
+                        vec!["dev", "2fa"],
+                    ),
+                    demo_entry(
+                        "Email",
+                        "ari@example.com",
+                        "mail-demo-pass-2026",
+                        "https://mail.example.com",
+                        "Primary inbox for test notifications.",
+                        vec!["personal"],
+                    ),
+                ],
+            },
+            VaultNode {
+                name: "Work".to_string(),
+                node_type: NodeType::Group,
+                expanded: true,
+                details: None,
+                children: vec![
+                    demo_entry(
+                        "Staging Admin",
+                        "admin.demo",
+                        "staging-Admin#42",
+                        "https://staging.example.com/admin",
+                        "Rotated every quarter.",
+                        vec!["work", "critical"],
+                    ),
+                    demo_entry(
+                        "VPN",
+                        "ari-demo",
+                        "vpn-demo-key-88",
+                        "https://vpn.example.com",
+                        "Use when traveling.",
+                        vec!["work", "infra"],
+                    ),
+                ],
+            },
+        ];
+
+        let mut vault = VaultState {
+            roots,
+            flat_view: Vec::new(),
+            selected: 0,
+            file_path: file_path.to_string(),
+            vault_name: "Demo Vault".to_string(),
+        };
+        vault.rebuild_flat_view();
+
+        if let Some(idx) = vault
+            .flat_view
+            .iter()
+            .position(|n| n.node_type == NodeType::Entry)
+        {
+            vault.selected = idx;
+        }
+
+        self.vault = Some(vault);
+        self.locked = false;
+        self.focus = ToolFocus::Tree;
+        self.input_prompt = None;
+        self.touch_activity();
+        self.update_detail_from_selection();
     }
 
     /// Actually open the vault with the given password.
@@ -1430,6 +1513,38 @@ fn shellexpand(path: &str) -> String {
         }
     }
     path.to_string()
+}
+
+fn is_demo_vault_path(path: &str) -> bool {
+    path.starts_with("/demo/vaults/") && path.ends_with(".kdbx")
+}
+
+fn demo_entry(
+    title: &str,
+    username: &str,
+    password: &str,
+    url: &str,
+    notes: &str,
+    tags: Vec<&str>,
+) -> VaultNode {
+    VaultNode {
+        name: title.to_string(),
+        node_type: NodeType::Entry,
+        expanded: false,
+        children: Vec::new(),
+        details: Some(EntryDetails {
+            title: title.to_string(),
+            username: username.to_string(),
+            password: password.to_string(),
+            url: url.to_string(),
+            notes: notes.to_string(),
+            tags: tags.into_iter().map(str::to_string).collect(),
+            custom_fields: vec![
+                ("Environment".to_string(), "Demo".to_string(), false),
+                ("Owner".to_string(), "rstools".to_string(), false),
+            ],
+        }),
+    }
 }
 
 /// Get the default KeePass directory.

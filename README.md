@@ -26,12 +26,26 @@ A vim-centric terminal toolkit built in Rust with [ratatui](https://ratatui.rs):
 
 ## Screenshots
 
-> Placeholder images for now. Replace these files later with real captures.
+<p align="center">
+  <a href="assets/screenshots/todo-demo.png">
+    <img src="assets/screenshots/todo-demo.png" alt="Todo Tool" width="32%" />
+  </a>
+  <a href="assets/screenshots/http-demo.png">
+    <img src="assets/screenshots/http-demo.png" alt="HTTP Tool" width="32%" />
+  </a>
+  <a href="assets/screenshots/keepass-demo.png">
+    <img src="assets/screenshots/keepass-demo.png" alt="KeePass Tool" width="32%" />
+  </a>
+</p>
 
-![Hub Dashboard](assets/screenshots/hub-dashboard-placeholder.svg)
-![Todo Tool](assets/screenshots/todo-placeholder.svg)
-![HTTP Tool](assets/screenshots/http-placeholder.svg)
-![KeePass Tool](assets/screenshots/keepass-placeholder.svg)
+<details>
+<summary>View full-size screenshots</summary>
+
+![Todo Tool](assets/screenshots/todo-demo.png)
+![HTTP Tool](assets/screenshots/http-demo.png)
+![KeePass Tool](assets/screenshots/keepass-demo.png)
+
+</details>
 
 ## Installation
 
@@ -66,6 +80,14 @@ Then:
 3. Navigate lists with `j/k`, jump with `gg/G`.
 4. Use `/` to search in the active view.
 5. Use `:q` or `<Space>q` to quit.
+
+For screenshots or demos with seeded mock data:
+
+```bash
+rstools --demo
+```
+
+This uses an isolated database at `./.demo/rstools-demo.db` and does not touch your regular data.
 
 ## Features
 

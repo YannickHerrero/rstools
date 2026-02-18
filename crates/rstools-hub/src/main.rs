@@ -1,9 +1,11 @@
 mod app;
+mod demo_seed;
 
 use std::io;
+use std::path::PathBuf;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture},
     execute,
@@ -19,18 +21,41 @@ use rstools_todo::TodoTool;
 use app::App;
 
 fn main() -> Result<()> {
+    let demo_mode = std::env::args().any(|arg| arg == "--demo");
+
     // Open the shared database
-    let conn = db::open_db()?;
+    let conn = if demo_mode {
+        let demo_path = demo_db_path()?;
+        db::open_db_at(&demo_path)?
+    } else {
+        db::open_db()?
+    };
+
+    if demo_mode {
+        demo_seed::seed_demo_data(&conn)?;
+    }
 
     // Create tools
     // Each tool gets its own connection to avoid borrow issues
-    let todo_conn = db::open_db()?;
+    let todo_conn = if demo_mode {
+        db::open_db_at(&demo_db_path()?)?
+    } else {
+        db::open_db()?
+    };
     let todo = TodoTool::new(todo_conn)?;
 
-    let http_conn = db::open_db()?;
+    let http_conn = if demo_mode {
+        db::open_db_at(&demo_db_path()?)?
+    } else {
+        db::open_db()?
+    };
     let http = HttpTool::new(http_conn)?;
 
-    let keepass_conn = db::open_db()?;
+    let keepass_conn = if demo_mode {
+        db::open_db_at(&demo_db_path()?)?
+    } else {
+        db::open_db()?
+    };
     let keepass = KeePassTool::new(keepass_conn)?;
 
     // Build the app
@@ -61,6 +86,14 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn demo_db_path() -> Result<PathBuf> {
+    let cwd = std::env::current_dir().context("Failed to get current directory")?;
+    let demo_dir = cwd.join(".demo");
+    std::fs::create_dir_all(&demo_dir)
+        .with_context(|| format!("Failed to create demo directory: {}", demo_dir.display()))?;
+    Ok(demo_dir.join("rstools-demo.db"))
 }
 
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> Result<()> {
