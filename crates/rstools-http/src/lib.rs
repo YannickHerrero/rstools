@@ -1119,8 +1119,8 @@ impl HttpTool {
             height: area.height,
         };
 
-        // Determine request vs response area (55/45 split)
-        let request_height = (content_area.height * 55 / 100).max(5);
+        // Determine request vs response area (30/70 split)
+        let request_height = (content_area.height * 30 / 100).max(5);
 
         // Account for fullscreen mode
         let (in_request, in_response) = match self.panel.fullscreen {

@@ -304,8 +304,8 @@ fn render_content_panel(frame: &mut Frame, area: Rect, panel: &RequestPanel, foc
         None => {}
     }
 
-    // Normal split: request area (top 55%) and response area (bottom 45%)
-    let request_height = (area.height * 55 / 100).max(5);
+    // Normal split: request area (top 30%) and response area (bottom 70%)
+    let request_height = (area.height * 30 / 100).max(5);
     let response_height = area.height.saturating_sub(request_height);
 
     let request_area = Rect {
