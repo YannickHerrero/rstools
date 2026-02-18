@@ -124,6 +124,7 @@ pub fn hub_leader_entries() -> Vec<WhichKeyEntry> {
     vec![
         WhichKeyEntry::group("f", "Find"),
         WhichKeyEntry::action("h", "HTTP"),
+        WhichKeyEntry::group("k", "KeePass"),
         WhichKeyEntry::action("t", "Todo"),
         WhichKeyEntry::action("q", "Quit"),
         WhichKeyEntry::action("?", "Help"),

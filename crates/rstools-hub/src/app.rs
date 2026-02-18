@@ -229,6 +229,12 @@ impl App {
                     self.switch_to_tool(idx);
                 }
             }
+            'k' => {
+                // Switch to KeePass tool
+                if let Some(idx) = self.tools.iter().position(|t| t.name() == "KeePass") {
+                    self.switch_to_tool(idx);
+                }
+            }
             _ => {}
         }
     }
@@ -271,6 +277,13 @@ impl App {
                         't' => {
                             // Switch to todo tool
                             if let Some(idx) = self.tools.iter().position(|t| t.name() == "Todo") {
+                                self.switch_to_tool(idx);
+                            }
+                        }
+                        'k' => {
+                            // Switch to KeePass tool
+                            if let Some(idx) = self.tools.iter().position(|t| t.name() == "KeePass")
+                            {
                                 self.switch_to_tool(idx);
                             }
                         }

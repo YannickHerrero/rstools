@@ -13,6 +13,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 
 use rstools_core::db;
 use rstools_http::HttpTool;
+use rstools_keepass::KeePassTool;
 use rstools_todo::TodoTool;
 
 use app::App;
@@ -29,8 +30,11 @@ fn main() -> Result<()> {
     let http_conn = db::open_db()?;
     let http = HttpTool::new(http_conn)?;
 
+    let keepass_conn = db::open_db()?;
+    let keepass = KeePassTool::new(keepass_conn)?;
+
     // Build the app
-    let mut app = App::new(vec![Box::new(todo), Box::new(http)]);
+    let mut app = App::new(vec![Box::new(todo), Box::new(http), Box::new(keepass)]);
     app.init_db(&conn)?;
 
     // Setup terminal

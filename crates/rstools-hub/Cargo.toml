@@ -14,6 +14,7 @@ path = "src/main.rs"
 rstools-core.workspace = true
 rstools-todo.workspace = true
 rstools-http.workspace = true
+rstools-keepass.workspace = true
 ratatui.workspace = true
 crossterm.workspace = true
 anyhow.workspace = true
