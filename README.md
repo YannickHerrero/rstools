@@ -227,9 +227,12 @@ Trailing `/` creates folder-only paths. Existing folders are reused.
 | Type | Filter results |
 | `Tab` / `Down` | Move selection down |
 | `Shift-Tab` / `Up` | Move selection up |
-| `Enter` | Select item |
+| `Enter` | Select item and jump to it (cross-tool) |
 | `Esc` | Close telescope |
 | `Backspace` | Delete search character |
+
+Telescope is global: it indexes items from all tools, and selecting a result
+opens the owning tool and navigates directly to that item.
 
 ## Architecture
 
