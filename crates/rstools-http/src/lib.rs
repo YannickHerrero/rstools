@@ -1190,14 +1190,22 @@ impl Tool for HttpTool {
                         return self.handle_confirm_delete_key(key);
                     }
 
-                    // Allow Ctrl-l to move from sidebar to panel
-                    if key.code == KeyCode::Char('l')
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                    {
-                        if self.panel.is_active() {
-                            self.sidebar_focused = false;
+                    // Ctrl-hjkl panel navigation from sidebar
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        match key.code {
+                            KeyCode::Char('l') => {
+                                if self.panel.is_active() {
+                                    self.sidebar_focused = false;
+                                }
+                                return Action::None;
+                            }
+                            // Ctrl-j/k/h are no-ops in the sidebar — consume them
+                            // so they don't trigger j/k/h navigation.
+                            KeyCode::Char('j') | KeyCode::Char('k') | KeyCode::Char('h') => {
+                                return Action::None;
+                            }
+                            _ => {}
                         }
-                        return Action::None;
                     }
 
                     self.handle_sidebar_normal_key(key)
