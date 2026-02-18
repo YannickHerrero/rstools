@@ -5,8 +5,8 @@
 //! nonce, and expiry timestamp. The PIN is valid for 30 days.
 
 use aes_gcm::{
-    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit},
 };
 use anyhow::{Context, Result};
 use argon2::Argon2;

@@ -3,11 +3,11 @@ use crate::sidebar::SidebarState;
 use crate::vault::{FlatNode, NodeType, VaultState};
 use crate::{InputPrompt, KeePassTool, ToolFocus};
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Flex, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
-    Frame,
 };
 
 /// Maximum sidebar width in characters.
