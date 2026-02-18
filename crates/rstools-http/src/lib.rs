@@ -580,6 +580,12 @@ impl HttpTool {
             }
         }
 
+        // Toggle fullscreen for the focused panel
+        if key.code == KeyCode::Char('f') && key.modifiers.is_empty() {
+            self.panel.toggle_fullscreen();
+            return Action::None;
+        }
+
         // Response-focused keys
         if self.panel.panel_focus == PanelFocus::Response {
             return self.handle_response_key(key);
@@ -1088,8 +1094,9 @@ impl Tool for HttpTool {
             HelpEntry::with_section("Sidebar", "Ctrl-l", "Move focus to content panel"),
             // Request Panel
             HelpEntry::with_section("Request", "Tab / S-Tab", "Cycle sections (URL/Params/Headers/Body)"),
-            HelpEntry::with_section("Request", "Ctrl-h/j/k/l", "Navigate between sections/panels"),
+            HelpEntry::with_section("Request", "Ctrl-h/j/k/l", "Navigate between panels"),
             HelpEntry::with_section("Request", "Ctrl-Enter", "Send request"),
+            HelpEntry::with_section("Request", "f", "Toggle fullscreen panel"),
             HelpEntry::with_section("Request", "<Space>s", "Send request"),
             HelpEntry::with_section("Request", ":w", "Save request to database"),
             HelpEntry::with_section("Request", "m / M", "Cycle method forward / backward"),

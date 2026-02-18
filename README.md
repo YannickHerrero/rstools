@@ -125,6 +125,7 @@ Trailing `/` creates folder-only paths. Existing folders are reused.
 | `<Space>s` | Send request (leader key) |
 | `<Space>e` | Toggle explorer sidebar |
 | `m` / `M` | Cycle HTTP method forward / backward |
+| `f` | Toggle fullscreen for the focused panel |
 | `:w` | Save request to database |
 
 #### URL Section

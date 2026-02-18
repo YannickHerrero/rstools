@@ -130,6 +130,7 @@ These MUST be consistent across ALL tools:
   - `Ctrl-Enter` — send request
   - `<Space>s` — send request (leader key)
   - `m` / `M` — cycle HTTP method forward / backward
+  - `f` — toggle fullscreen for the focused panel
   - `:w` — save request to database
 - Keybinds (URL section):
   - `i` / `a` — enter insert mode to edit URL

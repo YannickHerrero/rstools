@@ -288,8 +288,23 @@ fn render_content_panel(frame: &mut Frame, area: Rect, panel: &RequestPanel, foc
         return;
     }
 
-    // Split: request area (top) and response area (bottom)
-    // Use approximately 55% for request, 45% for response
+    let request_focused = focused && panel.panel_focus == PanelFocus::Request;
+    let response_focused = focused && panel.panel_focus == PanelFocus::Response;
+
+    // Fullscreen: render only the focused panel at full height
+    match panel.fullscreen {
+        Some(PanelFocus::Request) => {
+            render_request_area(frame, area, panel, request_focused);
+            return;
+        }
+        Some(PanelFocus::Response) => {
+            render_response_area(frame, area, panel, response_focused);
+            return;
+        }
+        None => {}
+    }
+
+    // Normal split: request area (top 55%) and response area (bottom 45%)
     let request_height = (area.height * 55 / 100).max(5);
     let response_height = area.height.saturating_sub(request_height);
 
@@ -302,9 +317,6 @@ fn render_content_panel(frame: &mut Frame, area: Rect, panel: &RequestPanel, foc
         height: response_height,
         ..area
     };
-
-    let request_focused = focused && panel.panel_focus == PanelFocus::Request;
-    let response_focused = focused && panel.panel_focus == PanelFocus::Response;
 
     render_request_area(frame, request_area, panel, request_focused);
     render_response_area(frame, response_area, panel, response_focused);

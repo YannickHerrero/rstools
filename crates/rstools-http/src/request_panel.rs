@@ -171,6 +171,10 @@ pub struct RequestPanel {
     /// Which field is being edited in kv sections.
     pub editing_field: KvField,
 
+    // Layout
+    /// When set, the corresponding panel is rendered fullscreen (hiding the other).
+    pub fullscreen: Option<PanelFocus>,
+
     // Dirty tracking
     pub dirty: bool,
 
@@ -201,6 +205,7 @@ impl RequestPanel {
             panel_focus: PanelFocus::Request,
             editing: false,
             editing_field: KvField::Key,
+            fullscreen: None,
             dirty: false,
             response: None,
             request_in_flight: false,
@@ -266,6 +271,7 @@ impl RequestPanel {
         self.focused_section = Section::Url;
         self.panel_focus = PanelFocus::Request;
         self.editing = false;
+        self.fullscreen = None;
         self.dirty = false;
         self.response = None;
         self.error_message = None;
@@ -748,6 +754,15 @@ impl RequestPanel {
     /// Move focus back to the request panel.
     pub fn focus_request(&mut self) {
         self.panel_focus = PanelFocus::Request;
+    }
+
+    /// Toggle fullscreen for the currently focused panel.
+    /// Pressing `f` when already fullscreen exits back to the split view.
+    pub fn toggle_fullscreen(&mut self) {
+        match self.fullscreen {
+            Some(_) => self.fullscreen = None,
+            None => self.fullscreen = Some(self.panel_focus),
+        }
     }
 
     // ── Spinner ──────────────────────────────────────────────────────
