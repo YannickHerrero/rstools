@@ -1,10 +1,10 @@
 use crate::keybinds::InputMode;
 use ratatui::{
-    Frame,
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Tabs},
+    Frame,
 };
 
 /// Render the top tab bar showing open tools.

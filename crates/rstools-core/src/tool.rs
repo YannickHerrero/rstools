@@ -3,7 +3,7 @@ use crate::keybinds::{Action, InputMode};
 use crate::telescope::TelescopeItem;
 use crate::which_key::WhichKeyEntry;
 use crossterm::event::{KeyEvent, MouseEvent};
-use ratatui::{Frame, layout::Rect};
+use ratatui::{layout::Rect, Frame};
 use rusqlite::Connection;
 
 /// The trait every rstools tool must implement.
