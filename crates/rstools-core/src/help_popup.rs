@@ -177,6 +177,8 @@ pub fn global_help_entries() -> Vec<HelpEntry> {
         HelpEntry::with_section("Leader (Space)", "<Space>1-9", "Switch to tool"),
         HelpEntry::with_section("Leader (Space)", "<Space>q", "Quit"),
         HelpEntry::with_section("Other", ":", "Command mode"),
+        HelpEntry::with_section("Other", ":wq", "Save and close tool / quit"),
+        HelpEntry::with_section("Other", ":wqa", "Save current tool and quit all"),
         HelpEntry::with_section("Other", ":q", "Close tool / quit"),
         HelpEntry::with_section("Other", ":qa", "Quit all"),
         HelpEntry::with_section("Other", "?", "This help"),

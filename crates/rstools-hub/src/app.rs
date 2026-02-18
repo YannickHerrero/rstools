@@ -428,6 +428,8 @@ impl App {
 
     /// Execute a command-mode command.
     fn execute_command(&mut self, cmd: &str) {
+        let cmd = cmd.trim();
+
         // First, let the active tool try to handle it
         if let Some(idx) = self.active_tool {
             if self.tools[idx].handle_command(cmd) {
@@ -447,6 +449,21 @@ impl App {
                 }
             }
             "qa" | "qa!" => {
+                self.should_quit = true;
+            }
+            "wq" | "x" => {
+                if let Some(idx) = self.active_tool {
+                    self.tools[idx].handle_command("w");
+                    self.tools[idx].on_blur();
+                    self.active_tool = None;
+                } else {
+                    self.should_quit = true;
+                }
+            }
+            "wqa" | "wqa!" | "xa" | "xa!" => {
+                if let Some(idx) = self.active_tool {
+                    self.tools[idx].handle_command("w");
+                }
                 self.should_quit = true;
             }
             _ => {
