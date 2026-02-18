@@ -340,41 +340,38 @@ fn collect_entries_recursive(
 fn convert_group(group: &keepass::db::Group, recycle_bin_u128: Option<u128>) -> Vec<VaultNode> {
     let mut nodes = Vec::new();
 
-    for node_ref in &group.children {
-        match node_ref {
-            keepass::db::Node::Group(child_group) => {
-                // Skip the Recycle Bin
-                if let Some(rb) = recycle_bin_u128 {
-                    if child_group.uuid.as_u128() == rb {
-                        continue;
-                    }
-                }
-
-                let children = convert_group(child_group, recycle_bin_u128);
-                nodes.push(VaultNode {
-                    name: child_group.name.clone(),
-                    node_type: NodeType::Group,
-                    children,
-                    details: None,
-                    expanded: false,
-                });
-            }
-            keepass::db::Node::Entry(entry) => {
-                let details = extract_entry_details(entry);
-                let name = details.title.clone();
-                nodes.push(VaultNode {
-                    name: if name.is_empty() {
-                        "(untitled)".to_string()
-                    } else {
-                        name
-                    },
-                    node_type: NodeType::Entry,
-                    children: Vec::new(),
-                    details: Some(details),
-                    expanded: false,
-                });
+    for child_group in group.groups() {
+        // Skip the Recycle Bin
+        if let Some(rb) = recycle_bin_u128 {
+            if child_group.uuid.as_u128() == rb {
+                continue;
             }
         }
+
+        let children = convert_group(child_group, recycle_bin_u128);
+        nodes.push(VaultNode {
+            name: child_group.name.clone(),
+            node_type: NodeType::Group,
+            children,
+            details: None,
+            expanded: false,
+        });
+    }
+
+    for entry in group.entries() {
+        let details = extract_entry_details(entry);
+        let name = details.title.clone();
+        nodes.push(VaultNode {
+            name: if name.is_empty() {
+                "(untitled)".to_string()
+            } else {
+                name
+            },
+            node_type: NodeType::Entry,
+            children: Vec::new(),
+            details: Some(details),
+            expanded: false,
+        });
     }
 
     // Sort: groups first, then entries, alphabetically within each category

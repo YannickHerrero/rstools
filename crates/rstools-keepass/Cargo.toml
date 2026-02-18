@@ -16,7 +16,7 @@ anyhow.workspace = true
 unicode-width.workspace = true
 
 # KeePass KDBX4 parsing
-keepass = "0.8"
+keepass = "=0.8.20"
 
 # System clipboard
 arboard = "3"
