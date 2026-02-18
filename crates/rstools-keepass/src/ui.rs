@@ -490,35 +490,43 @@ fn render_detail_panel(frame: &mut Frame, area: Rect, detail: &DetailPanel, focu
     lines.push(Line::from(""));
 
     // Password
-    let password_display = if detail.password_visible {
-        details.password.clone()
+    let password_label = Span::styled(
+        "Password ",
+        Style::default()
+            .fg(COLOR_LABEL)
+            .add_modifier(Modifier::BOLD),
+    );
+    if details.password.is_empty() {
+        lines.push(Line::from(vec![
+            password_label,
+            Span::styled("(empty)", Style::default().add_modifier(Modifier::DIM)),
+        ]));
     } else {
-        "\u{2022}".repeat(details.password.len().min(20))
-    };
-    lines.push(Line::from(vec![
-        Span::styled(
-            "Password ",
-            Style::default()
-                .fg(COLOR_LABEL)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            password_display,
-            Style::default().fg(if detail.password_visible {
-                Color::White
-            } else {
-                COLOR_MASKED
-            }),
-        ),
-        Span::styled(
-            if detail.password_visible {
-                "  [p: hide]"
-            } else {
-                "  [p: show]"
-            },
-            Style::default().add_modifier(Modifier::DIM),
-        ),
-    ]));
+        let password_display = if detail.password_visible {
+            details.password.clone()
+        } else {
+            "\u{2022}".repeat(details.password.len().min(20))
+        };
+        lines.push(Line::from(vec![
+            password_label,
+            Span::styled(
+                password_display,
+                Style::default().fg(if detail.password_visible {
+                    Color::White
+                } else {
+                    COLOR_MASKED
+                }),
+            ),
+            Span::styled(
+                if detail.password_visible {
+                    "  [p: hide]"
+                } else {
+                    "  [p: show]"
+                },
+                Style::default().add_modifier(Modifier::DIM),
+            ),
+        ]));
+    }
     lines.push(Line::from(""));
 
     // URL
