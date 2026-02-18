@@ -2,11 +2,11 @@ use crate::model::HttpMethod;
 use crate::request_panel::{KvField, KvRow, PanelFocus, RequestPanel, ResponseSection, Section};
 use crate::sidebar::SidebarState;
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 use unicode_width::UnicodeWidthStr;
 
