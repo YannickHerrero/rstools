@@ -1,7 +1,7 @@
 pub mod model;
 pub mod ui;
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     widgets::ListState,
@@ -429,6 +429,72 @@ impl Tool for TodoTool {
                 // Command mode is handled by the hub
                 Action::None
             }
+        }
+    }
+
+    fn handle_mouse(&mut self, mouse: MouseEvent, area: Rect) -> Action {
+        // Don't handle mouse in Insert mode
+        if self.mode == InputMode::Insert {
+            return Action::None;
+        }
+
+        // Recompute the list area (same layout as render)
+        let list_area = if self.mode == InputMode::Insert && self.edit_context.is_some() {
+            let [list_area, _] =
+                Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).areas(area);
+            list_area
+        } else {
+            area
+        };
+
+        // The list area has a 1-line info bar at the bottom and a border
+        let [inner_list_area, _] =
+            Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(list_area);
+
+        // Account for the block border (1 line top, 1 line bottom, 1 char left/right)
+        let content_y_start = inner_list_area.y + 1; // top border
+        let content_y_end = inner_list_area.y + inner_list_area.height.saturating_sub(1); // bottom border
+
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Click on a todo item to select it
+                if mouse.row >= content_y_start
+                    && mouse.row < content_y_end
+                    && mouse.column >= inner_list_area.x
+                    && mouse.column < inner_list_area.x + inner_list_area.width
+                    && !self.filtered.is_empty()
+                {
+                    // The ListState handles scroll offset internally.
+                    // We need to figure out which item the user clicked by
+                    // accounting for the list's internal scroll (list_state.offset()).
+                    let row_in_list = (mouse.row - content_y_start) as usize;
+                    let scroll_offset = self.list_state.offset();
+                    let clicked_idx = scroll_offset + row_in_list;
+                    if clicked_idx < self.filtered.len() {
+                        self.list_state.select(Some(clicked_idx));
+                    }
+                }
+                Action::None
+            }
+            MouseEventKind::ScrollDown => {
+                // Scroll down = select next item (same as j)
+                if !self.filtered.is_empty() {
+                    let sel = self.list_state.selected().unwrap_or(0);
+                    let next = (sel + 1).min(self.filtered.len() - 1);
+                    self.list_state.select(Some(next));
+                }
+                Action::None
+            }
+            MouseEventKind::ScrollUp => {
+                // Scroll up = select previous item (same as k)
+                if !self.filtered.is_empty() {
+                    let sel = self.list_state.selected().unwrap_or(0);
+                    let next = sel.saturating_sub(1);
+                    self.list_state.select(Some(next));
+                }
+                Action::None
+            }
+            _ => Action::None,
         }
     }
 
