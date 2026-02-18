@@ -4,6 +4,8 @@ pub mod request_panel;
 pub mod sidebar;
 pub mod ui;
 
+use std::collections::HashMap;
+
 use rstools_core::help_popup::HelpEntry;
 use rstools_core::keybinds::{process_normal_key, Action, InputMode, KeyState};
 use rstools_core::telescope::TelescopeItem;
@@ -19,6 +21,13 @@ use model::EntryType;
 use request_panel::{KvField, PanelFocus, RequestPanel, ResponseData, ResponseSection, Section};
 use sidebar::{ClipboardMode, SidebarInput, SidebarState};
 
+/// Cached response data for a query, keyed by entry_id.
+/// Allows restoring the last response when switching back to a previously-run query.
+struct CachedResponse {
+    response: Option<ResponseData>,
+    error_message: Option<String>,
+}
+
 pub struct HttpTool {
     sidebar: SidebarState,
     panel: RequestPanel,
@@ -28,6 +37,8 @@ pub struct HttpTool {
     executor: HttpExecutor,
     /// Whether the sidebar is focused (vs content panel).
     sidebar_focused: bool,
+    /// In-memory cache of the last response per query (keyed by entry_id).
+    response_cache: HashMap<i64, CachedResponse>,
 }
 
 impl HttpTool {
@@ -44,6 +55,7 @@ impl HttpTool {
             conn,
             executor,
             sidebar_focused: true,
+            response_cache: HashMap::new(),
         })
     }
 
@@ -87,7 +99,7 @@ impl HttpTool {
                         resp.body
                     };
 
-                    self.panel.response = Some(ResponseData {
+                    let response_data = ResponseData {
                         status_code: resp.status_code,
                         status_text: resp.status_text,
                         elapsed_ms: resp.elapsed_ms,
@@ -97,19 +109,65 @@ impl HttpTool {
                         body_scroll: 0,
                         headers_scroll: 0,
                         focused_section: ResponseSection::Body,
-                    });
+                    };
+
+                    self.panel.response = Some(response_data.clone());
                     self.panel.error_message = None;
+
+                    // Cache the response for this query
+                    if let Some(entry_id) = self.panel.active_entry_id {
+                        self.response_cache.insert(entry_id, CachedResponse {
+                            response: self.panel.response.clone(),
+                            error_message: None,
+                        });
+                    }
                 }
                 Err(e) => {
-                    self.panel.error_message = Some(e.message);
+                    self.panel.error_message = Some(e.message.clone());
+
+                    // Cache the error for this query
+                    if let Some(entry_id) = self.panel.active_entry_id {
+                        self.response_cache.insert(entry_id, CachedResponse {
+                            response: None,
+                            error_message: Some(e.message),
+                        });
+                    }
                 }
+            }
+        }
+    }
+
+    /// Save the current panel's response/error into the cache before switching away.
+    fn cache_current_response(&mut self) {
+        if let Some(entry_id) = self.panel.active_entry_id {
+            if self.panel.response.is_some() || self.panel.error_message.is_some() {
+                self.response_cache.insert(entry_id, CachedResponse {
+                    response: self.panel.response.clone(),
+                    error_message: self.panel.error_message.clone(),
+                });
             }
         }
     }
 
     /// Open a query in the content panel.
     fn open_query(&mut self, entry_id: i64, name: &str) {
+        // Cache the current query's response before switching
+        self.cache_current_response();
+
         let _ = self.panel.load(entry_id, name, &self.conn);
+
+        // Restore cached response if available (load() resets response to None)
+        if let Some(cached) = self.response_cache.get(&entry_id) {
+            self.panel.response = cached.response.clone().map(|mut r| {
+                // Reset scroll positions when restoring
+                r.body_scroll = 0;
+                r.headers_scroll = 0;
+                r.focused_section = ResponseSection::Body;
+                r
+            });
+            self.panel.error_message = cached.error_message.clone();
+        }
+
         self.sidebar_focused = false;
     }
 
@@ -446,6 +504,8 @@ impl HttpTool {
                     self.sidebar.clipboard = None;
                 }
             }
+            // Remove cached response for deleted entry
+            self.response_cache.remove(&entry_id);
             let _ = self.sidebar.reload(&self.conn);
         }
     }
