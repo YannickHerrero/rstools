@@ -7,13 +7,8 @@ A vim-centric terminal toolkit built in Rust with [ratatui](https://ratatui.rs):
 
 ## Philosophy
 
-`rstools` is designed like neovim for terminal productivity workflows:
-
-- Modal editing first: Normal, Insert, Command.
-- `hjkl` navigation, motions, and operators as primary interaction.
-- `Space` as leader with a which-key popup for discoverability.
-- Telescope-style fuzzy finding across tools.
-- Local-first persistence in a single SQLite database.
+rstools is a collection of independent terminal tools unified by a single hub.
+The entire UX is modeled after neovim with modal editing, hjkl navigation, leader key, which-key, and telescope.
 
 ## What It Does
 
