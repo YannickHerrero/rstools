@@ -7,13 +7,13 @@ pub mod ui;
 use std::collections::HashMap;
 
 use rstools_core::help_popup::HelpEntry;
-use rstools_core::keybinds::{process_normal_key, Action, InputMode, KeyState};
+use rstools_core::keybinds::{Action, InputMode, KeyState, process_normal_key};
 use rstools_core::telescope::TelescopeItem;
 use rstools_core::tool::Tool;
 use rstools_core::which_key::WhichKeyEntry;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::{layout::Rect, Frame};
+use ratatui::{Frame, layout::Rect};
 use rusqlite::Connection;
 
 use executor::{HttpExecutor, HttpRequestCmd};
@@ -93,11 +93,12 @@ impl HttpTool {
             match result {
                 Ok(resp) => {
                     // Pretty-print JSON if possible
-                    let body = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&resp.body) {
-                        serde_json::to_string_pretty(&json).unwrap_or(resp.body)
-                    } else {
-                        resp.body
-                    };
+                    let body =
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&resp.body) {
+                            serde_json::to_string_pretty(&json).unwrap_or(resp.body)
+                        } else {
+                            resp.body
+                        };
 
                     let response_data = ResponseData {
                         status_code: resp.status_code,
@@ -116,10 +117,13 @@ impl HttpTool {
 
                     // Cache the response for this query
                     if let Some(entry_id) = self.panel.active_entry_id {
-                        self.response_cache.insert(entry_id, CachedResponse {
-                            response: self.panel.response.clone(),
-                            error_message: None,
-                        });
+                        self.response_cache.insert(
+                            entry_id,
+                            CachedResponse {
+                                response: self.panel.response.clone(),
+                                error_message: None,
+                            },
+                        );
                     }
                 }
                 Err(e) => {
@@ -127,10 +131,13 @@ impl HttpTool {
 
                     // Cache the error for this query
                     if let Some(entry_id) = self.panel.active_entry_id {
-                        self.response_cache.insert(entry_id, CachedResponse {
-                            response: None,
-                            error_message: Some(e.message),
-                        });
+                        self.response_cache.insert(
+                            entry_id,
+                            CachedResponse {
+                                response: None,
+                                error_message: Some(e.message),
+                            },
+                        );
                     }
                 }
             }
@@ -141,10 +148,13 @@ impl HttpTool {
     fn cache_current_response(&mut self) {
         if let Some(entry_id) = self.panel.active_entry_id {
             if self.panel.response.is_some() || self.panel.error_message.is_some() {
-                self.response_cache.insert(entry_id, CachedResponse {
-                    response: self.panel.response.clone(),
-                    error_message: self.panel.error_message.clone(),
-                });
+                self.response_cache.insert(
+                    entry_id,
+                    CachedResponse {
+                        response: self.panel.response.clone(),
+                        error_message: self.panel.error_message.clone(),
+                    },
+                );
             }
         }
     }
@@ -583,9 +593,7 @@ impl HttpTool {
         }
 
         // Ctrl-Enter sends request from anywhere
-        if key.code == KeyCode::Enter
-            && key.modifiers.contains(KeyModifiers::CONTROL)
-        {
+        if key.code == KeyCode::Enter && key.modifiers.contains(KeyModifiers::CONTROL) {
             self.send_request();
             return Action::None;
         }
@@ -934,13 +942,11 @@ impl HttpTool {
                 self.mode = InputMode::Normal;
                 Action::SetMode(InputMode::Normal)
             }
-            _ => {
-                match self.panel.focused_section {
-                    Section::Url => self.handle_url_insert_key(key),
-                    Section::Params | Section::Headers => self.handle_kv_insert_key(key),
-                    Section::Body => self.handle_body_insert_key(key),
-                }
-            }
+            _ => match self.panel.focused_section {
+                Section::Url => self.handle_url_insert_key(key),
+                Section::Params | Section::Headers => self.handle_kv_insert_key(key),
+                Section::Body => self.handle_body_insert_key(key),
+            },
         }
     }
 
@@ -1142,7 +1148,12 @@ impl HttpTool {
     }
 
     /// Handle a click inside the request area.
-    fn handle_request_area_click(&mut self, mouse: MouseEvent, content_area: Rect, request_height: u16) {
+    fn handle_request_area_click(
+        &mut self,
+        mouse: MouseEvent,
+        content_area: Rect,
+        request_height: u16,
+    ) {
         let request_area = match self.panel.fullscreen {
             Some(PanelFocus::Request) => content_area,
             _ => Rect {
@@ -1215,7 +1226,12 @@ impl HttpTool {
     }
 
     /// Handle a click inside the response area.
-    fn handle_response_area_click(&mut self, mouse: MouseEvent, content_area: Rect, request_height: u16) {
+    fn handle_response_area_click(
+        &mut self,
+        mouse: MouseEvent,
+        content_area: Rect,
+        request_height: u16,
+    ) {
         if self.panel.response.is_none() {
             return;
         }
@@ -1295,13 +1311,11 @@ impl HttpTool {
 
     fn panel_goto_top(&mut self) {
         match self.panel.panel_focus {
-            PanelFocus::Request => {
-                match self.panel.focused_section {
-                    Section::Headers | Section::Params => self.panel.kv_goto_top(),
-                    Section::Body => self.panel.body_goto_top(),
-                    _ => {}
-                }
-            }
+            PanelFocus::Request => match self.panel.focused_section {
+                Section::Headers | Section::Params => self.panel.kv_goto_top(),
+                Section::Body => self.panel.body_goto_top(),
+                _ => {}
+            },
             PanelFocus::Response => {
                 if let Some(ref mut resp) = self.panel.response {
                     match resp.focused_section {
@@ -1311,6 +1325,48 @@ impl HttpTool {
                 }
             }
         }
+    }
+
+    /// Select and open a query by entry ID from telescope.
+    fn select_query_by_entry_id(&mut self, entry_id: i64) -> bool {
+        let Some((name, entry_type)) = sidebar::find_node(&self.sidebar.roots, entry_id)
+            .map(|n| (n.entry.name.clone(), n.entry.entry_type))
+        else {
+            return false;
+        };
+
+        if entry_type != EntryType::Query {
+            return false;
+        }
+
+        let mut ancestors = Vec::new();
+        let mut current = entry_id;
+        while let Some(parent_id) = sidebar::find_parent_id(&self.sidebar.roots, current) {
+            ancestors.push(parent_id);
+            current = parent_id;
+        }
+
+        for ancestor_id in ancestors.into_iter().rev() {
+            if let Some(node) = sidebar::find_node_mut(&mut self.sidebar.roots, ancestor_id) {
+                if !node.expanded {
+                    node.expanded = true;
+                    let _ = model::set_entry_expanded(&self.conn, ancestor_id, true);
+                }
+            }
+        }
+
+        self.sidebar.rebuild_flat_view();
+        if let Some(position) = self
+            .sidebar
+            .flat_view
+            .iter()
+            .position(|entry| entry.entry_id == entry_id)
+        {
+            self.sidebar.selected = position;
+        }
+
+        self.open_query(entry_id, &name);
+        true
     }
 
     /// Collect all queries as telescope items.
@@ -1375,6 +1431,18 @@ impl Tool for HttpTool {
         self.collect_telescope_items()
     }
 
+    fn handle_telescope_selection(&mut self, id: &str) -> bool {
+        let Some(raw_id) = id.strip_prefix("http:") else {
+            return false;
+        };
+
+        let Ok(entry_id) = raw_id.parse::<i64>() else {
+            return false;
+        };
+
+        self.select_query_by_entry_id(entry_id)
+    }
+
     fn help_entries(&self) -> Vec<HelpEntry> {
         vec![
             // Sidebar
@@ -1390,7 +1458,11 @@ impl Tool for HttpTool {
             HelpEntry::with_section("Sidebar", "gg / G", "Go to top / bottom"),
             HelpEntry::with_section("Sidebar", "Ctrl-l", "Move focus to content panel"),
             // Request Panel
-            HelpEntry::with_section("Request", "Tab / S-Tab", "Cycle sections (URL/Params/Headers/Body)"),
+            HelpEntry::with_section(
+                "Request",
+                "Tab / S-Tab",
+                "Cycle sections (URL/Params/Headers/Body)",
+            ),
             HelpEntry::with_section("Request", "Ctrl-h/j/k/l", "Navigate between panels"),
             HelpEntry::with_section("Request", "Ctrl-Enter", "Send request"),
             HelpEntry::with_section("Request", "f", "Toggle fullscreen panel"),
@@ -1559,7 +1631,13 @@ impl Tool for HttpTool {
     }
 
     fn render(&self, frame: &mut Frame, area: Rect) {
-        ui::render_http_tool(frame, area, &self.sidebar, &self.panel, self.sidebar_focused);
+        ui::render_http_tool(
+            frame,
+            area,
+            &self.sidebar,
+            &self.panel,
+            self.sidebar_focused,
+        );
     }
 
     fn tick(&mut self) {

@@ -2,7 +2,7 @@ use anyhow::Result;
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
-use ratatui::{layout::Rect, Frame};
+use ratatui::{Frame, layout::Rect};
 use rusqlite::Connection;
 
 use rstools_core::{
@@ -341,13 +341,20 @@ impl App {
 
     /// Handle a telescope selection.
     fn handle_telescope_selection(&mut self, id: &str) {
-        if id.starts_with("tool:") {
-            let tool_name = &id[5..];
+        if let Some(tool_name) = id.strip_prefix("tool:") {
             if let Some(idx) = self.tools.iter().position(|t| t.name() == tool_name) {
                 self.switch_to_tool(idx);
             }
+            return;
         }
-        // Future: handle "todo:<id>" etc.
+
+        if let Some(idx) = self
+            .tools
+            .iter_mut()
+            .position(|tool| tool.handle_telescope_selection(id))
+        {
+            self.switch_to_tool(idx);
+        }
     }
 
     /// Handle command-mode key events.

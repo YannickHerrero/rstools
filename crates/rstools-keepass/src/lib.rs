@@ -15,7 +15,7 @@ use rstools_core::tool::Tool;
 use rstools_core::which_key::WhichKeyEntry;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::{layout::Rect, Frame};
+use ratatui::{Frame, layout::Rect};
 use rusqlite::Connection;
 use zeroize::Zeroize;
 
@@ -314,29 +314,32 @@ impl KeePassTool {
         self.search_selected = 0;
     }
 
+    fn navigate_to_tree_path(&mut self, path: &[usize]) -> bool {
+        if let Some(ref mut vault) = self.vault {
+            for depth in 1..path.len() {
+                let parent_path = &path[..depth];
+                if let Some(node) = vault.node_at_path_mut_public(parent_path) {
+                    node.expanded = true;
+                }
+            }
+            vault.rebuild_flat_view();
+
+            if let Some(idx) = vault.flat_view.iter().position(|n| n.path == path) {
+                vault.selected = idx;
+                self.update_detail_from_selection();
+                self.focus = ToolFocus::Tree;
+                return true;
+            }
+        }
+        false
+    }
+
     fn confirm_search_selection(&mut self) {
         if let Some(entry) = self.search_results.get(self.search_selected) {
             let path = entry.tree_path.clone();
             self.close_search();
 
-            // Navigate to the selected entry in the vault tree
-            if let Some(ref mut vault) = self.vault {
-                // Expand all parent groups to make the entry visible
-                for depth in 1..path.len() {
-                    let parent_path = &path[..depth];
-                    if let Some(node) = vault.node_at_path_mut_public(parent_path) {
-                        node.expanded = true;
-                    }
-                }
-                vault.rebuild_flat_view();
-
-                // Select the entry
-                if let Some(idx) = vault.flat_view.iter().position(|n| n.path == path) {
-                    vault.selected = idx;
-                    self.update_detail_from_selection();
-                    self.focus = ToolFocus::Tree;
-                }
-            }
+            let _ = self.navigate_to_tree_path(&path);
         }
     }
 
@@ -1071,6 +1074,24 @@ impl Tool for KeePassTool {
             }
         }
         items
+    }
+
+    fn handle_telescope_selection(&mut self, id: &str) -> bool {
+        let Some(title) = id.strip_prefix("keepass:") else {
+            return false;
+        };
+
+        let Some(path) = self.vault.as_ref().and_then(|vault| {
+            vault
+                .collect_searchable_entries()
+                .into_iter()
+                .find(|entry| entry.title == title)
+                .map(|entry| entry.tree_path)
+        }) else {
+            return false;
+        };
+
+        self.navigate_to_tree_path(&path)
     }
 
     fn help_entries(&self) -> Vec<HelpEntry> {

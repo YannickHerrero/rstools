@@ -3,15 +3,15 @@ pub mod ui;
 
 use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{
+    Frame,
     layout::{Constraint, Layout, Rect},
     widgets::ListState,
-    Frame,
 };
 use rusqlite::Connection;
 
 use rstools_core::{
     help_popup::HelpEntry,
-    keybinds::{process_normal_key, Action, InputMode, KeyState},
+    keybinds::{Action, InputMode, KeyState, process_normal_key},
     telescope::TelescopeItem,
     tool::Tool,
     which_key::WhichKeyEntry,
@@ -119,6 +119,25 @@ impl TodoTool {
     /// Get the currently selected todo's id.
     fn selected_todo_id(&self) -> Option<i64> {
         self.selected_todo().map(|t| t.id)
+    }
+
+    /// Select a todo by database ID. Clears active filter if needed.
+    fn select_todo_by_id(&mut self, todo_id: i64) -> bool {
+        if self.filter.is_some() {
+            self.filter = None;
+            self.apply_filter();
+        }
+
+        let Some(todo_index) = self.todos.iter().position(|t| t.id == todo_id) else {
+            return false;
+        };
+
+        let Some(filtered_index) = self.filtered.iter().position(|&idx| idx == todo_index) else {
+            return false;
+        };
+
+        self.list_state.select(Some(filtered_index));
+        true
     }
 
     /// Start adding a new todo.
@@ -333,6 +352,18 @@ impl Tool for TodoTool {
                 id: format!("todo:{}", t.id),
             })
             .collect()
+    }
+
+    fn handle_telescope_selection(&mut self, id: &str) -> bool {
+        let Some(raw_id) = id.strip_prefix("todo:") else {
+            return false;
+        };
+
+        let Ok(todo_id) = raw_id.parse::<i64>() else {
+            return false;
+        };
+
+        self.select_todo_by_id(todo_id)
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Action {

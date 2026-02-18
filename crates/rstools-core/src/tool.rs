@@ -3,7 +3,7 @@ use crate::keybinds::{Action, InputMode};
 use crate::telescope::TelescopeItem;
 use crate::which_key::WhichKeyEntry;
 use crossterm::event::{KeyEvent, MouseEvent};
-use ratatui::{layout::Rect, Frame};
+use ratatui::{Frame, layout::Rect};
 use rusqlite::Connection;
 
 /// The trait every rstools tool must implement.
@@ -27,6 +27,12 @@ pub trait Tool {
 
     /// Items this tool contributes to telescope search.
     fn telescope_items(&self) -> Vec<TelescopeItem>;
+
+    /// Handle selecting an item from global telescope search.
+    /// Return true if this tool handled the ID and navigated to it.
+    fn handle_telescope_selection(&mut self, _id: &str) -> bool {
+        false
+    }
 
     /// Help entries specific to this tool (shown alongside global keybinds).
     /// Override this to add tool-specific keybind documentation.
