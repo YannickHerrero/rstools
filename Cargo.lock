@@ -2254,6 +2254,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rstools-notes"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "crossterm",
+ "ratatui",
+ "rstools-core",
+ "rusqlite",
+ "unicode-width",
+]
+
+[[package]]
 name = "rstools-todo"
 version = "0.1.0"
 dependencies = [

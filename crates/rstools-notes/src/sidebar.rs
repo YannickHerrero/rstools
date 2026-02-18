@@ -5,8 +5,8 @@ use crate::model::{self, EntryType, NoteEntry};
 use anyhow::Result;
 use rstools_core::tree_sidebar::TreeEntry;
 pub use rstools_core::tree_sidebar::{
-    render_tree_sidebar, ClipboardItem, ClipboardMode, FlatEntry, SidebarInput, TreeNode,
-    TreeSidebar, TreeSidebarRenderConfig,
+    find_node, find_parent_id, render_tree_sidebar, ClipboardItem, ClipboardMode, FlatEntry,
+    SidebarInput, TreeNode, TreeSidebar, TreeSidebarRenderConfig,
 };
 use rusqlite::Connection;
 

@@ -1,6 +1,8 @@
 pub mod buffer;
 pub mod history;
 
+use std::cell::Cell;
+
 use buffer::{
     char_class, find_char_backward, find_char_forward, find_till_backward, find_till_forward,
     find_word_backward, find_word_end, find_word_forward, CharClass, TextBuffer,
@@ -144,7 +146,7 @@ pub struct VimEditor {
     visual_anchor_row: usize,
     visual_anchor_col: usize,
     /// Visible height (updated each render for half-page calculations).
-    visible_height: usize,
+    visible_height: Cell<usize>,
 }
 
 impl VimEditor {
@@ -157,7 +159,7 @@ impl VimEditor {
             parse_state: ParseState::Idle,
             visual_anchor_row: 0,
             visual_anchor_col: 0,
-            visible_height: 20,
+            visible_height: Cell::new(20),
         }
     }
 
@@ -1264,13 +1266,13 @@ impl VimEditor {
                 Motion::FileTop => self.buffer.goto_top(),
                 Motion::FileBottom => self.buffer.goto_bottom(),
                 Motion::HalfPageDown => {
-                    let half = self.visible_height / 2;
+                    let half = self.visible_height.get() / 2;
                     for _ in 0..half {
                         self.buffer.cursor_down();
                     }
                 }
                 Motion::HalfPageUp => {
-                    let half = self.visible_height / 2;
+                    let half = self.visible_height.get() / 2;
                     for _ in 0..half {
                         self.buffer.cursor_up();
                     }
@@ -1925,12 +1927,12 @@ impl VimEditor {
 
     // ── Rendering ────────────────────────────────────────────────────
 
-    pub fn render(&mut self, frame: &mut Frame, area: Rect, focused: bool) {
+    pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
         if area.height == 0 || area.width == 0 {
             return;
         }
 
-        self.visible_height = area.height as usize;
+        self.visible_height.set(area.height as usize);
 
         // Line number gutter width (relative line numbers)
         let max_line_num = self.buffer.line_count();
