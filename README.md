@@ -29,6 +29,28 @@ The entire UX is modeled after neovim with modal editing, hjkl navigation, leade
 
 **Planned:** database viewer, and more.
 
+## Installation
+
+Install directly from this repository:
+
+```bash
+cargo install --git https://github.com/YannickHerrero/rstools.git rstools-hub --bin rstools
+```
+
+Install from a local clone:
+
+```bash
+cargo install --path crates/rstools-hub --bin rstools
+```
+
+Update an existing installation:
+
+```bash
+cargo install --path crates/rstools-hub --bin rstools --force
+```
+
+`rstools` is a single binary that includes all tools (Todo, HTTP, KeePass).
+
 ## Building
 
 ```bash
