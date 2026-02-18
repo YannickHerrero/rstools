@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
+  <title id="title">rstools Todo placeholder</title>
+  <desc id="desc">Placeholder image for rstools Todo tool screenshot.</desc>
+  <rect width="1200" height="700" fill="#0b1020"/>
+  <rect x="40" y="40" width="1120" height="620" rx="14" fill="#111827" stroke="#334155" stroke-width="2"/>
+  <text x="80" y="98" fill="#86efac" font-size="22" font-family="monospace">todo</text>
+  <rect x="70" y="130" width="1060" height="500" rx="8" fill="#0f172a" stroke="#334155"/>
+  <text x="90" y="180" fill="#e2e8f0" font-size="20" font-family="monospace">[ ] write docs</text>
+  <text x="90" y="220" fill="#94a3b8" font-size="20" font-family="monospace">[x] ship first MVP</text>
+  <text x="90" y="260" fill="#e2e8f0" font-size="20" font-family="monospace">[ ] capture screenshots</text>
+  <text x="90" y="320" fill="#64748b" font-size="18" font-family="monospace">placeholder screenshot - replace later</text>
+</svg>

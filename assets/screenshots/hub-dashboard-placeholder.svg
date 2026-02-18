@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
+  <title id="title">rstools Hub dashboard placeholder</title>
+  <desc id="desc">Placeholder image for rstools hub dashboard screenshot.</desc>
+  <rect width="1200" height="700" fill="#0f172a"/>
+  <rect x="40" y="40" width="1120" height="620" rx="14" fill="#111827" stroke="#334155" stroke-width="2"/>
+  <rect x="70" y="70" width="1060" height="46" rx="8" fill="#1f2937"/>
+  <text x="85" y="99" fill="#93c5fd" font-size="20" font-family="monospace">rstools - hub</text>
+  <rect x="70" y="140" width="340" height="490" rx="8" fill="#0b1220" stroke="#334155"/>
+  <rect x="430" y="140" width="700" height="490" rx="8" fill="#0b1220" stroke="#334155"/>
+  <text x="85" y="180" fill="#cbd5e1" font-size="28" font-family="monospace">Dashboard</text>
+  <text x="85" y="220" fill="#64748b" font-size="18" font-family="monospace">[ placeholder screenshot ]</text>
+  <text x="445" y="180" fill="#cbd5e1" font-size="24" font-family="monospace">Replace with real image</text>
+</svg>

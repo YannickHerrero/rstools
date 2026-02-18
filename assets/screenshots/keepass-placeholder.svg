@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
+  <title id="title">rstools KeePass placeholder</title>
+  <desc id="desc">Placeholder image for rstools KeePass tool screenshot.</desc>
+  <rect width="1200" height="700" fill="#0d1b16"/>
+  <rect x="40" y="40" width="1120" height="620" rx="14" fill="#111827" stroke="#334155" stroke-width="2"/>
+  <rect x="70" y="120" width="260" height="510" rx="8" fill="#0b1220" stroke="#334155"/>
+  <rect x="350" y="120" width="350" height="510" rx="8" fill="#0b1220" stroke="#334155"/>
+  <rect x="720" y="120" width="410" height="510" rx="8" fill="#0b1220" stroke="#334155"/>
+  <text x="80" y="92" fill="#6ee7b7" font-size="22" font-family="monospace">keepass</text>
+  <text x="90" y="170" fill="#cbd5e1" font-size="18" font-family="monospace">vaults</text>
+  <text x="370" y="170" fill="#cbd5e1" font-size="18" font-family="monospace">entries</text>
+  <text x="740" y="170" fill="#cbd5e1" font-size="18" font-family="monospace">details</text>
+  <text x="740" y="220" fill="#94a3b8" font-size="16" font-family="monospace">password: ********</text>
+  <text x="740" y="255" fill="#64748b" font-size="16" font-family="monospace">placeholder screenshot - replace later</text>
+</svg>

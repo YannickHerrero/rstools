@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
+  <title id="title">rstools HTTP placeholder</title>
+  <desc id="desc">Placeholder image for rstools HTTP tool screenshot.</desc>
+  <rect width="1200" height="700" fill="#101418"/>
+  <rect x="40" y="40" width="1120" height="620" rx="14" fill="#111827" stroke="#334155" stroke-width="2"/>
+  <rect x="70" y="120" width="320" height="510" rx="8" fill="#0b1220" stroke="#334155"/>
+  <rect x="410" y="120" width="720" height="240" rx="8" fill="#0b1220" stroke="#334155"/>
+  <rect x="410" y="380" width="720" height="250" rx="8" fill="#0b1220" stroke="#334155"/>
+  <text x="80" y="92" fill="#fca5a5" font-size="22" font-family="monospace">http</text>
+  <text x="90" y="170" fill="#cbd5e1" font-size="18" font-family="monospace">api/</text>
+  <text x="90" y="205" fill="#cbd5e1" font-size="18" font-family="monospace">  users/get-by-id</text>
+  <text x="430" y="165" fill="#93c5fd" font-size="18" font-family="monospace">GET https://api.example.com/users/42</text>
+  <text x="430" y="420" fill="#86efac" font-size="18" font-family="monospace">200 OK</text>
+  <text x="430" y="455" fill="#64748b" font-size="18" font-family="monospace">placeholder screenshot - replace later</text>
+</svg>
