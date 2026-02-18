@@ -135,6 +135,7 @@ pub fn render_grep_overlay(
     selected: usize,
     preview_title: &str,
     preview_text: &str,
+    preview_target_line: Option<usize>,
 ) {
     let popup_width = (area.width * 80 / 100)
         .max(50)
@@ -195,12 +196,46 @@ pub fn render_grep_overlay(
 
     frame.render_stateful_widget(list, results_area, &mut list_state);
 
-    let preview = Paragraph::new(preview_text)
+    let preview_height = preview_area.height.saturating_sub(2) as usize; // account for borders
+    let preview_scroll = if let Some(target_line) = preview_target_line {
+        if preview_height == 0 {
+            0
+        } else {
+            let half = preview_height / 2;
+            target_line.saturating_sub(half) as u16
+        }
+    } else {
+        0
+    };
+
+    let mut preview_lines: Vec<Line> = preview_text
+        .lines()
+        .enumerate()
+        .map(|(i, line)| {
+            if Some(i) == preview_target_line {
+                Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ))
+            } else {
+                Line::from(Span::raw(line.to_string()))
+            }
+        })
+        .collect();
+    if preview_lines.is_empty() {
+        preview_lines.push(Line::from(""));
+    }
+
+    let preview = Paragraph::new(preview_lines)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .title(format!(" Preview: {} ", preview_title)),
         )
+        .scroll((preview_scroll, 0))
         .wrap(ratatui::widgets::Wrap { trim: false });
     frame.render_widget(preview, preview_area);
 }

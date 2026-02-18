@@ -917,17 +917,18 @@ impl Tool for NotesTool {
                 .map(|m| format!("{}:{}  {}", m.note_path, m.line_number, m.line_text.trim()))
                 .collect();
 
-            let (preview_title, preview_text) =
+            let (preview_title, preview_text, preview_target_line) =
                 if let Some(m) = self.grep_matches.get(self.grep_selected) {
                     let title = m.note_path.clone();
                     let body = model::get_note_content(&self.conn, m.entry_id)
                         .map(|c| c.body)
                         .unwrap_or_else(|_| "(unable to load note content)".to_string());
-                    (title, body)
+                    (title, body, Some(m.line_number.saturating_sub(1)))
                 } else {
                     (
                         "No selection".to_string(),
                         "Type to grep note contents...".to_string(),
+                        None,
                     )
                 };
 
@@ -939,6 +940,7 @@ impl Tool for NotesTool {
                 self.grep_selected,
                 &preview_title,
                 &preview_text,
+                preview_target_line,
             );
         }
     }
