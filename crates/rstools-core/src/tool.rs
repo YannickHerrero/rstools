@@ -2,7 +2,7 @@ use crate::help_popup::HelpEntry;
 use crate::keybinds::{Action, InputMode};
 use crate::telescope::TelescopeItem;
 use crate::which_key::WhichKeyEntry;
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::{layout::Rect, Frame};
 use rusqlite::Connection;
 
@@ -36,6 +36,12 @@ pub trait Tool {
 
     /// Handle a key event. Returns an Action describing what happened.
     fn handle_key(&mut self, key: KeyEvent) -> Action;
+
+    /// Handle a mouse event. `area` is the content area the tool was rendered into.
+    /// Returns an Action describing what happened. Default is no-op.
+    fn handle_mouse(&mut self, _mouse: MouseEvent, _area: Rect) -> Action {
+        Action::None
+    }
 
     /// Render the tool's UI into the given area.
     fn render(&self, frame: &mut Frame, area: Rect);

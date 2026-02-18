@@ -1,5 +1,7 @@
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use ratatui::{layout::Rect, Frame};
 use rusqlite::Connection;
 
@@ -34,6 +36,9 @@ pub struct App {
     command_cursor: usize,
     /// Key state for dashboard (persistent so gg/dd work).
     key_state: KeyState,
+    /// Cached layout areas from the last render (for mouse hit-testing).
+    last_tab_area: Rect,
+    last_content_area: Rect,
 }
 
 impl App {
@@ -50,6 +55,8 @@ impl App {
             command_input: String::new(),
             command_cursor: 0,
             key_state: KeyState::default(),
+            last_tab_area: Rect::default(),
+            last_content_area: Rect::default(),
         }
     }
 
@@ -118,6 +125,8 @@ impl App {
                 // Dashboard mode — handle global keys
                 self.handle_dashboard_key(key);
             }
+        } else if let Event::Mouse(mouse) = event {
+            self.handle_mouse_event(mouse);
         }
     }
 
@@ -419,6 +428,76 @@ impl App {
         self.process_action(action);
     }
 
+    /// Handle a mouse event.
+    fn handle_mouse_event(&mut self, mouse: MouseEvent) {
+        let col = mouse.column;
+        let row = mouse.row;
+
+        // Overlays intercept mouse events when visible
+        if self.telescope.visible {
+            self.handle_telescope_mouse(mouse);
+            return;
+        }
+        if self.which_key.visible {
+            self.handle_which_key_mouse(mouse);
+            return;
+        }
+        if self.help_popup.visible {
+            self.handle_help_mouse(mouse);
+            return;
+        }
+
+        // Tab bar: click to switch tools
+        if self.last_tab_area.height > 0
+            && row >= self.last_tab_area.y
+            && row < self.last_tab_area.y + self.last_tab_area.height
+            && col >= self.last_tab_area.x
+            && col < self.last_tab_area.x + self.last_tab_area.width
+        {
+            if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+                if let Some(idx) = self.tab_index_at(col) {
+                    self.switch_to_tool(idx);
+                }
+                return;
+            }
+        }
+
+        // Content area: delegate to active tool
+        if self.last_content_area.height > 0
+            && row >= self.last_content_area.y
+            && row < self.last_content_area.y + self.last_content_area.height
+            && col >= self.last_content_area.x
+            && col < self.last_content_area.x + self.last_content_area.width
+        {
+            if let Some(idx) = self.active_tool {
+                let action = self.tools[idx].handle_mouse(mouse, self.last_content_area);
+                self.process_action(action);
+            }
+        }
+    }
+
+    /// Determine which tab index was clicked based on column position.
+    fn tab_index_at(&self, col: u16) -> Option<usize> {
+        if self.tools.is_empty() {
+            return None;
+        }
+        // Tabs are rendered as: "Name1 | Name2 | Name3"
+        // Each tab: name + divider " | " (3 chars), except the last.
+        let mut x = self.last_tab_area.x;
+        for (i, tool) in self.tools.iter().enumerate() {
+            let name_len = tool.name().len() as u16;
+            if col >= x && col < x + name_len {
+                return Some(i);
+            }
+            x += name_len;
+            // Divider " | " = 3 chars
+            if i < self.tools.len() - 1 {
+                x += 3;
+            }
+        }
+        None
+    }
+
     /// Switch to a tool by index.
     fn switch_to_tool(&mut self, idx: usize) {
         if idx < self.tools.len() {
@@ -490,6 +569,93 @@ impl App {
         self.help_popup.show(title, entries);
     }
 
+    /// Handle mouse events while telescope is visible.
+    fn handle_telescope_mouse(&mut self, mouse: MouseEvent) {
+        // Overlays render over the full terminal area.
+        // Reconstruct it from the stored layout: tab_area starts at y=0,
+        // status bar is 1 line below content_area.
+        let full_area = Rect {
+            x: 0,
+            y: 0,
+            width: self.last_content_area.width.max(self.last_tab_area.width),
+            height: self.last_content_area.y + self.last_content_area.height + 1,
+        };
+        let popup_area = self.telescope_popup_rect(full_area);
+
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                if !rect_contains(popup_area, mouse.column, mouse.row) {
+                    self.telescope.close();
+                    self.reset_all_key_state();
+                } else {
+                    // Click inside: check if it's on a result item
+                    let results_y_start = popup_area.y + 3; // input area is 3 lines
+                    let results_y_end = popup_area.y + popup_area.height - 1; // -1 for bottom border
+                    if mouse.row >= results_y_start
+                        && mouse.row < results_y_end
+                        && mouse.column > popup_area.x
+                        && mouse.column < popup_area.x + popup_area.width - 1
+                    {
+                        let clicked_idx = (mouse.row - results_y_start) as usize;
+                        if clicked_idx < self.telescope.filtered.len() {
+                            self.telescope.list_state.select(Some(clicked_idx));
+                        }
+                    }
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                self.telescope.move_down();
+            }
+            MouseEventKind::ScrollUp => {
+                self.telescope.move_up();
+            }
+            _ => {}
+        }
+    }
+
+    /// Compute the telescope popup rect (same logic as Telescope::render).
+    fn telescope_popup_rect(&self, area: Rect) -> Rect {
+        use ratatui::layout::{Constraint, Flex, Layout};
+        let popup_width = (area.width * 60 / 100)
+            .max(40)
+            .min(area.width.saturating_sub(4));
+        let popup_height = (area.height * 60 / 100)
+            .max(10)
+            .min(area.height.saturating_sub(4));
+        let vertical = Layout::vertical([Constraint::Length(popup_height)]).flex(Flex::Center);
+        let horizontal = Layout::horizontal([Constraint::Length(popup_width)]).flex(Flex::Center);
+        let [popup_area] = vertical.areas(area);
+        let [popup_area] = horizontal.areas(popup_area);
+        popup_area
+    }
+
+    /// Handle mouse events while which-key is visible.
+    fn handle_which_key_mouse(&mut self, mouse: MouseEvent) {
+        // Click anywhere outside closes which-key, click inside is ignored
+        if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+            self.which_key.hide();
+            self.reset_all_key_state();
+        }
+    }
+
+    /// Handle mouse events while help popup is visible.
+    fn handle_help_mouse(&mut self, mouse: MouseEvent) {
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Click anywhere closes the help popup
+                self.help_popup.hide();
+                self.reset_all_key_state();
+            }
+            MouseEventKind::ScrollDown => {
+                self.help_popup.scroll_down();
+            }
+            MouseEventKind::ScrollUp => {
+                self.help_popup.scroll_up();
+            }
+            _ => {}
+        }
+    }
+
     /// Handle key events while the help popup is visible.
     fn handle_help_key(&mut self, key: KeyEvent) {
         match key.code {
@@ -521,6 +687,10 @@ impl App {
     pub fn render(&mut self, frame: &mut Frame) {
         let area = frame.area();
         let (tab_area, content_area, status_area) = ui::standard_layout(area);
+
+        // Store layout areas for mouse hit-testing
+        self.last_tab_area = tab_area;
+        self.last_content_area = content_area;
 
         // Tab bar
         let tool_names: Vec<&str> = self.tools.iter().map(|t| t.name()).collect();
@@ -646,4 +816,9 @@ impl App {
 
         frame.render_widget(paragraph, centered);
     }
+}
+
+/// Check if a point (col, row) is inside a Rect.
+fn rect_contains(rect: Rect, col: u16, row: u16) -> bool {
+    col >= rect.x && col < rect.x + rect.width && row >= rect.y && row < rect.y + rect.height
 }
