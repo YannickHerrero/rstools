@@ -1,4 +1,5 @@
 use anyhow::Result;
+use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
@@ -125,6 +126,8 @@ impl App {
                 // Dashboard mode — handle global keys
                 self.handle_dashboard_key(key);
             }
+        } else if let Event::Paste(text) = event {
+            self.handle_paste_event(&text);
         } else if let Event::Mouse(mouse) = event {
             self.handle_mouse_event(mouse);
         }
@@ -461,6 +464,36 @@ impl App {
     }
 
     /// Handle a mouse event.
+    /// Handle a bracketed paste event from the terminal.
+    fn handle_paste_event(&mut self, text: &str) {
+        // If telescope is active, insert into the telescope input
+        if self.telescope.visible {
+            for c in text.chars() {
+                if c != '\n' && c != '\r' {
+                    self.telescope.insert_char(c);
+                }
+            }
+            return;
+        }
+
+        // If command mode, insert into the command input
+        if self.mode == InputMode::Command {
+            for c in text.chars() {
+                if c != '\n' && c != '\r' {
+                    self.command_input.insert(self.command_cursor, c);
+                    self.command_cursor += c.len_utf8();
+                }
+            }
+            return;
+        }
+
+        // Delegate to active tool
+        if let Some(idx) = self.active_tool {
+            let action = self.tools[idx].handle_paste(text);
+            self.process_action(action);
+        }
+    }
+
     fn handle_mouse_event(&mut self, mouse: MouseEvent) {
         let col = mouse.column;
         let row = mouse.row;
@@ -763,6 +796,20 @@ impl App {
         self.which_key.render(frame, area);
         self.help_popup.render(frame, area);
         self.telescope.render(frame, area);
+    }
+
+    /// Returns the cursor style appropriate for the current mode.
+    /// Insert mode uses a line/bar cursor; Normal/Command use block.
+    pub fn cursor_style(&self) -> SetCursorStyle {
+        let mode = match self.active_tool {
+            Some(idx) => self.tools[idx].mode(),
+            None => self.mode,
+        };
+
+        match mode {
+            InputMode::Insert => SetCursorStyle::SteadyBar,
+            _ => SetCursorStyle::SteadyBlock,
+        }
     }
 
     /// Render the dashboard when no tool is active.

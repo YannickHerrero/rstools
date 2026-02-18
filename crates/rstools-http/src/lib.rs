@@ -1630,6 +1630,40 @@ impl Tool for HttpTool {
         self.key_state.reset();
     }
 
+    fn handle_paste(&mut self, text: &str) -> Action {
+        if self.mode == InputMode::Insert && self.panel.is_active() {
+            // If in insert mode on the body section, paste into the body
+            if self.panel.focused_section == Section::Body {
+                self.panel.body_insert_text(text);
+            } else if let Some(Section::Params | Section::Headers) = Some(self.panel.focused_section) {
+                // For KV sections, insert into the active field (strip newlines)
+                for c in text.chars() {
+                    if c != '\n' && c != '\r' {
+                        self.panel.kv_insert_char(c);
+                    }
+                }
+            } else {
+                // URL section — insert stripped text
+                for c in text.chars() {
+                    if c != '\n' && c != '\r' {
+                        self.panel.url_insert_char(c);
+                    }
+                }
+            }
+        } else if self.mode == InputMode::Insert
+            && self.sidebar.visible
+            && self.sidebar_focused
+            && self.sidebar.input_mode != SidebarInput::None
+        {
+            for c in text.chars() {
+                if c != '\n' && c != '\r' {
+                    self.sidebar.input_insert_char(c);
+                }
+            }
+        }
+        Action::None
+    }
+
     fn on_focus(&mut self) {
         let _ = HttpSidebarExt::reload(&mut self.sidebar, &self.conn);
     }

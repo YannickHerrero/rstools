@@ -7,7 +7,10 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture},
+    cursor::SetCursorStyle,
+    event::{
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -78,7 +81,12 @@ fn main() -> Result<()> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(
+        stdout,
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        EnableBracketedPaste
+    )?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -90,7 +98,9 @@ fn main() -> Result<()> {
     execute!(
         terminal.backend_mut(),
         LeaveAlternateScreen,
-        DisableMouseCapture
+        DisableMouseCapture,
+        DisableBracketedPaste,
+        SetCursorStyle::DefaultUserShape,
     )?;
     terminal.show_cursor()?;
 
@@ -116,6 +126,9 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
         terminal.draw(|frame| {
             app.render(frame);
         })?;
+
+        // Update cursor shape based on current mode
+        execute!(terminal.backend_mut(), app.cursor_style())?;
 
         if app.should_quit {
             return Ok(());

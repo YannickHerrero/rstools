@@ -722,6 +722,33 @@ impl Tool for NotesTool {
         self.key_state.reset();
     }
 
+    fn handle_paste(&mut self, text: &str) -> Action {
+        if self.active_note_id.is_some() && !self.sidebar_focused {
+            self.editor.paste_text(text);
+            // Sync mode: if editor ended up in Insert, update our mode
+            match self.editor.mode {
+                VimMode::Insert => {
+                    self.mode = InputMode::Insert;
+                    Action::SetMode(InputMode::Insert)
+                }
+                _ => {
+                    self.mode = InputMode::Normal;
+                    Action::None
+                }
+            }
+        } else if self.sidebar.input_mode != SidebarInput::None {
+            // If sidebar is in input mode (adding/renaming), insert into input buffer
+            for c in text.chars() {
+                if c != '\n' && c != '\r' {
+                    self.sidebar.input_insert_char(c);
+                }
+            }
+            Action::None
+        } else {
+            Action::None
+        }
+    }
+
     fn on_focus(&mut self) {
         let _ = NotesSidebarExt::reload(&mut self.sidebar, &self.conn);
     }

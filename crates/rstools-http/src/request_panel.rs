@@ -616,6 +616,17 @@ impl RequestPanel {
         }
     }
 
+    /// Insert a block of text at the cursor (for bracketed paste).
+    pub fn body_insert_text(&mut self, text: &str) {
+        for c in text.chars() {
+            if c == '\n' {
+                self.body_insert_newline();
+            } else if c != '\r' {
+                self.body_insert_char(c);
+            }
+        }
+    }
+
     pub fn body_insert_newline(&mut self) {
         let current_line = self.body_lines[self.body_cursor_row].clone();
         let (before, after) = current_line.split_at(self.body_cursor_col);

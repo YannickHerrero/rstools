@@ -188,6 +188,33 @@ impl VimEditor {
         self.buffer.dirty = false;
     }
 
+    /// Handle a bracketed paste event. Inserts the text at the cursor,
+    /// entering Insert mode if necessary. Always returns to the mode
+    /// the editor was in before, or stays in Insert if already there.
+    pub fn paste_text(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        self.save_undo();
+
+        let was_insert = self.mode == VimMode::Insert;
+        if !was_insert {
+            // Enter insert mode temporarily
+            self.mode = VimMode::Insert;
+        }
+
+        self.buffer.insert_text(text);
+
+        if !was_insert {
+            // Return to Normal mode (move cursor back like Esc does)
+            if self.buffer.cursor_col > 0 {
+                self.buffer.cursor_left();
+            }
+            self.mode = VimMode::Normal;
+            self.parse_state = ParseState::Idle;
+        }
+    }
+
     /// Save snapshot before a modification for undo.
     fn save_undo(&mut self) {
         let snapshot = self.buffer.snapshot();

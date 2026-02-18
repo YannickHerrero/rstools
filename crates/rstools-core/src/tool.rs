@@ -72,6 +72,12 @@ pub trait Tool {
         false
     }
 
+    /// Handle a bracketed paste event. The `text` is the full pasted string.
+    /// Returns an Action describing what happened. Default is no-op.
+    fn handle_paste(&mut self, _text: &str) -> Action {
+        Action::None
+    }
+
     /// Called when the tool becomes the active view.
     fn on_focus(&mut self) {}
 
