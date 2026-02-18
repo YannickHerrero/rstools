@@ -1976,11 +1976,13 @@ impl VimEditor {
 
         let visible_lines = area.height as usize;
 
-        // Scrolling: keep cursor in view
-        let scroll_offset = if self.buffer.cursor_row >= visible_lines {
-            self.buffer.cursor_row - visible_lines + 1
-        } else {
+        // Scrolling: keep cursor vertically centered (like vim scrolloff=999).
+        // The cursor row sits at the middle of the viewport when possible.
+        let scroll_offset = if visible_lines == 0 {
             0
+        } else {
+            let half = visible_lines / 2;
+            self.buffer.cursor_row.saturating_sub(half)
         };
 
         // Visual selection range
