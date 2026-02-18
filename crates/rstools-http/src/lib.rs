@@ -12,7 +12,7 @@ use rstools_core::telescope::TelescopeItem;
 use rstools_core::tool::Tool;
 use rstools_core::which_key::WhichKeyEntry;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{layout::Rect, Frame};
 use rusqlite::Connection;
 
@@ -1057,6 +1057,242 @@ impl HttpTool {
         }
     }
 
+    // ── Mouse handling helpers ──────────────────────────────────────
+
+    /// Handle a click inside the sidebar area.
+    fn handle_sidebar_click(&mut self, mouse: MouseEvent, area: Rect, sidebar_width: u16) {
+        let sidebar_area = Rect {
+            x: area.x,
+            y: area.y,
+            width: sidebar_width,
+            height: area.height,
+        };
+
+        // Account for the sidebar border block (1 line top, 1 left, 1 right)
+        let inner_y_start = sidebar_area.y + 1;
+        let inner_y_end = sidebar_area.y + sidebar_area.height.saturating_sub(1);
+
+        if mouse.row >= inner_y_start && mouse.row < inner_y_end {
+            let row_in_tree = (mouse.row - inner_y_start) as usize;
+
+            // Account for scroll offset (same logic as render_tree_entries)
+            let total_items = self.sidebar.flat_view.len() + 1;
+            let visible_lines = (inner_y_end - inner_y_start) as usize;
+            let scroll_offset = if self.sidebar.selected >= visible_lines {
+                self.sidebar.selected - visible_lines + 1
+            } else {
+                0
+            };
+
+            let clicked_idx = scroll_offset + row_in_tree;
+            if clicked_idx < total_items {
+                // If clicking on a folder that's already selected, toggle expand/collapse
+                let was_selected = self.sidebar.selected == clicked_idx;
+                self.sidebar.selected = clicked_idx;
+
+                if was_selected {
+                    if let Some(entry) = self.sidebar.selected_entry() {
+                        if entry.entry_type == EntryType::Folder {
+                            self.sidebar.toggle_expand(&self.conn);
+                        } else {
+                            // Click on already-selected query: open it
+                            let id = entry.entry_id;
+                            let name = entry.name.clone();
+                            self.open_query(id, &name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Handle a click inside the content panel area.
+    fn handle_content_click(&mut self, mouse: MouseEvent, area: Rect, sidebar_width: u16) {
+        if !self.panel.is_active() {
+            return;
+        }
+
+        let content_area = Rect {
+            x: area.x + sidebar_width,
+            y: area.y,
+            width: area.width.saturating_sub(sidebar_width),
+            height: area.height,
+        };
+
+        // Determine request vs response area (55/45 split)
+        let request_height = (content_area.height * 55 / 100).max(5);
+
+        // Account for fullscreen mode
+        let (in_request, in_response) = match self.panel.fullscreen {
+            Some(PanelFocus::Request) => (true, false),
+            Some(PanelFocus::Response) => (false, true),
+            None => {
+                let r = mouse.row < content_area.y + request_height;
+                (r, !r)
+            }
+        };
+
+        if in_request {
+            self.panel.panel_focus = PanelFocus::Request;
+            self.handle_request_area_click(mouse, content_area, request_height);
+        } else if in_response {
+            self.panel.panel_focus = PanelFocus::Response;
+            self.handle_response_area_click(mouse, content_area, request_height);
+        }
+    }
+
+    /// Handle a click inside the request area.
+    fn handle_request_area_click(&mut self, mouse: MouseEvent, content_area: Rect, request_height: u16) {
+        let request_area = match self.panel.fullscreen {
+            Some(PanelFocus::Request) => content_area,
+            _ => Rect {
+                height: request_height,
+                ..content_area
+            },
+        };
+
+        // Request area has a border block. Inner area starts 1 down, 1 in from each side.
+        let inner_y = request_area.y + 1;
+        if mouse.row < inner_y {
+            return;
+        }
+        let row_in_inner = mouse.row - inner_y;
+
+        // Row 0 = URL bar, Row 1 = section tabs, Row 2+ = section content
+        if row_in_inner == 0 {
+            // Click on URL bar: focus URL section
+            self.panel.focused_section = Section::Url;
+        } else if row_in_inner == 1 {
+            // Click on section tabs: determine which tab
+            let inner_x = request_area.x + 1;
+            let col_in_tabs = mouse.column.saturating_sub(inner_x);
+            // Tabs layout: " Params │ Headers │ Body"
+            // " " = 1, "Params" = 6, " │ " = 3, "Headers" = 7, " │ " = 3, "Body" = 4
+            if col_in_tabs < 7 {
+                // " Params" region
+                self.panel.focused_section = Section::Params;
+            } else if col_in_tabs < 17 {
+                // " │ Headers" region
+                self.panel.focused_section = Section::Headers;
+            } else {
+                // " │ Body" region
+                self.panel.focused_section = Section::Body;
+            }
+        } else {
+            // Click in section content area: select KV row if in Params/Headers
+            let content_row = (row_in_inner - 2) as usize;
+            match self.panel.focused_section {
+                Section::Params => {
+                    if content_row < self.panel.query_params.len() {
+                        // Account for scroll offset
+                        let visible_lines = request_area.height.saturating_sub(4) as usize; // -2 border -2 url+tabs
+                        let scroll_offset = if self.panel.params_selected >= visible_lines {
+                            self.panel.params_selected - visible_lines + 1
+                        } else {
+                            0
+                        };
+                        let clicked_idx = scroll_offset + content_row;
+                        if clicked_idx < self.panel.query_params.len() {
+                            self.panel.params_selected = clicked_idx;
+                        }
+                    }
+                }
+                Section::Headers => {
+                    let visible_lines = request_area.height.saturating_sub(4) as usize;
+                    let scroll_offset = if self.panel.headers_selected >= visible_lines {
+                        self.panel.headers_selected - visible_lines + 1
+                    } else {
+                        0
+                    };
+                    let clicked_idx = scroll_offset + content_row;
+                    if clicked_idx < self.panel.headers.len() {
+                        self.panel.headers_selected = clicked_idx;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Handle a click inside the response area.
+    fn handle_response_area_click(&mut self, mouse: MouseEvent, content_area: Rect, request_height: u16) {
+        if self.panel.response.is_none() {
+            return;
+        }
+
+        let response_area = match self.panel.fullscreen {
+            Some(PanelFocus::Response) => content_area,
+            _ => Rect {
+                y: content_area.y + request_height,
+                height: content_area.height.saturating_sub(request_height),
+                ..content_area
+            },
+        };
+
+        // Response area has a border. Inner starts 1 down.
+        let inner_y = response_area.y + 1;
+        if mouse.row < inner_y {
+            return;
+        }
+        let row_in_inner = mouse.row - inner_y;
+
+        // Row 0 = status line, Row 1 = response tabs (Body | Headers), Row 2+ = content
+        if row_in_inner == 1 {
+            // Click on response tabs
+            if let Some(ref mut resp) = self.panel.response {
+                let inner_x = response_area.x + 1;
+                let col = mouse.column.saturating_sub(inner_x);
+                // " Body │ Headers (N)"
+                // " " = 1, "Body" = 4, " │ " = 3 => Headers starts at ~8
+                if col < 6 {
+                    resp.focused_section = ResponseSection::Body;
+                } else {
+                    resp.focused_section = ResponseSection::Headers;
+                }
+            }
+        }
+    }
+
+    /// Handle scroll down in the content panel (delegates to the focused section).
+    fn handle_content_scroll_down(&mut self) {
+        match self.panel.panel_focus {
+            PanelFocus::Request => match self.panel.focused_section {
+                Section::Params => self.panel.kv_move_down(),
+                Section::Headers => self.panel.kv_move_down(),
+                Section::Body => self.panel.body_cursor_down(),
+                Section::Url => {}
+            },
+            PanelFocus::Response => {
+                if let Some(ref mut resp) = self.panel.response {
+                    match resp.focused_section {
+                        ResponseSection::Body => resp.scroll_body_down(3),
+                        ResponseSection::Headers => resp.scroll_headers_down(1),
+                    }
+                }
+            }
+        }
+    }
+
+    /// Handle scroll up in the content panel (delegates to the focused section).
+    fn handle_content_scroll_up(&mut self) {
+        match self.panel.panel_focus {
+            PanelFocus::Request => match self.panel.focused_section {
+                Section::Params => self.panel.kv_move_up(),
+                Section::Headers => self.panel.kv_move_up(),
+                Section::Body => self.panel.body_cursor_up(),
+                Section::Url => {}
+            },
+            PanelFocus::Response => {
+                if let Some(ref mut resp) = self.panel.response {
+                    match resp.focused_section {
+                        ResponseSection::Body => resp.scroll_body_up(3),
+                        ResponseSection::Headers => resp.scroll_headers_up(1),
+                    }
+                }
+            }
+        }
+    }
+
     fn panel_goto_top(&mut self) {
         match self.panel.panel_focus {
             PanelFocus::Request => {
@@ -1245,6 +1481,63 @@ impl Tool for HttpTool {
                 // Command mode is handled by the hub
                 Action::None
             }
+        }
+    }
+
+    fn handle_mouse(&mut self, mouse: MouseEvent, area: Rect) -> Action {
+        // Don't handle mouse in Insert mode (except scroll)
+        let is_scroll = matches!(
+            mouse.kind,
+            MouseEventKind::ScrollDown | MouseEventKind::ScrollUp
+        );
+
+        if self.mode == InputMode::Insert && !is_scroll {
+            return Action::None;
+        }
+
+        // Determine sidebar vs content area boundaries
+        let sidebar_width = if self.sidebar.visible {
+            ui::SIDEBAR_WIDTH.min(area.width.saturating_sub(10))
+        } else {
+            0
+        };
+
+        let in_sidebar = self.sidebar.visible && mouse.column < area.x + sidebar_width;
+        let in_content = mouse.column >= area.x + sidebar_width
+            && mouse.column < area.x + area.width
+            && mouse.row >= area.y
+            && mouse.row < area.y + area.height;
+
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                if in_sidebar {
+                    // Click in sidebar: focus it and select entry
+                    self.sidebar_focused = true;
+                    self.handle_sidebar_click(mouse, area, sidebar_width);
+                } else if in_content {
+                    // Click in content: focus it
+                    self.sidebar_focused = false;
+                    self.handle_content_click(mouse, area, sidebar_width);
+                }
+                Action::None
+            }
+            MouseEventKind::ScrollDown => {
+                if in_sidebar && self.sidebar_focused {
+                    self.sidebar.move_down();
+                } else if in_content || (in_sidebar && !self.sidebar_focused) {
+                    self.handle_content_scroll_down();
+                }
+                Action::None
+            }
+            MouseEventKind::ScrollUp => {
+                if in_sidebar && self.sidebar_focused {
+                    self.sidebar.move_up();
+                } else if in_content || (in_sidebar && !self.sidebar_focused) {
+                    self.handle_content_scroll_up();
+                }
+                Action::None
+            }
+            _ => Action::None,
         }
     }
 
