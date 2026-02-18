@@ -159,6 +159,58 @@ These MUST be consistent across ALL tools:
   - `group/api/` — trailing slash creates all segments as folders
   - Existing folders are reused (not duplicated)
 
+### KeePass (`rstools-keepass`)
+- Tables: `keepass_files`
+- Model: id, file_path, display_name, encrypted_password, pin_salt, pin_nonce,
+  pin_expires_at, last_opened_at, created_at, updated_at
+- Read-only KDBX4 vault viewer using the `keepass` crate
+- Layout: sidebar (40 chars, toggle with `<Space>ke`) + tree panel (40%) + detail panel (60%)
+- Sidebar shows previously opened .kdbx files, ordered most-recently-opened first
+- `[PIN]` indicator on files with active PIN quick-access
+- Recycle Bin group is hidden from the tree
+- Password fields masked with dots, toggled with `p`
+- Security: best-effort zeroize via `zeroize` crate, AES-256-GCM PIN encryption via `aes-gcm` + `argon2`
+- System clipboard via `arboard`, auto-clear after 30 seconds for passwords
+- Auto-lock after 15 minutes of inactivity, shows lock screen
+- PIN: 4-digit per-file PIN, valid for 30 days, prompted after successful password entry
+- Search: telescope-style split overlay (fzf results left, preview right), searches titles only
+- File picker: telescope-style, scans `~/keepass` recursively for `.kdbx` files
+- Keybinds (Normal mode, sidebar focused):
+  - `j/k` — move up/down
+  - `Enter` — open selected file (prompts for PIN or password)
+  - `dd` — remove file from history (with y/n confirmation)
+  - `gg` / `G` — go to top / bottom
+  - `Ctrl-d` / `Ctrl-u` — half-page down / up
+  - `Ctrl-l` — move focus to tree panel
+- Keybinds (Normal mode, tree panel focused):
+  - `j/k` — move up/down
+  - `h` — collapse group / go to parent
+  - `l` / `Enter` — expand group
+  - `gg` / `G` — go to top / bottom
+  - `Ctrl-d` / `Ctrl-u` — half-page down / up
+  - `Ctrl-h` — move focus to sidebar
+  - `Ctrl-l` — move focus to detail panel
+  - `/` — open search overlay
+  - `p` — toggle password visibility in detail panel
+  - `yu` — copy username to clipboard
+  - `yp` — copy password to clipboard (auto-clears after 30s)
+  - `yU` — copy URL to clipboard
+- Keybinds (Normal mode, detail panel focused):
+  - `j/k` — scroll up/down
+  - `p` — toggle password visibility
+  - `yu` — copy username
+  - `yp` — copy password (auto-clears after 30s)
+  - `yU` — copy URL
+  - `Ctrl-h` — move focus to tree panel
+- Keybinds (Lock screen):
+  - `Enter` — unlock (prompts for PIN or password)
+- Which-key (`<Space>k`):
+  - `o` — Open file picker
+  - `e` — Toggle sidebar
+  - `s` — Search entries
+- Commands:
+  - `:open <path>` — open a .kdbx file
+
 ## Commit Conventions
 
 - **Commit after each significant step** when building a feature — do NOT wait

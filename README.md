@@ -25,8 +25,9 @@ The entire UX is modeled after neovim with modal editing, hjkl navigation, leade
 | Hub | MVP | Main orchestrator, dashboard, tool picker, tab switching |
 | Todo | MVP | Minimalist todo list with vim navigation, filtering, CRUD |
 | HTTP | MVP | HTTP client & API explorer (Postman-like) with neo-tree sidebar |
+| KeePass | MVP | Read-only KDBX4 vault viewer with PIN quick-access |
 
-**Planned:** KeePass client, database viewer, and more.
+**Planned:** database viewer, and more.
 
 ## Building
 
@@ -58,6 +59,7 @@ The binary is `rstools`:
 | `<Space>f` | Find (telescope fuzzy finder) |
 | `<Space>t` | Todo tool (switch or sub-menu) |
 | `<Space>h` | HTTP tool (switch or sub-menu) |
+| `<Space>k` | KeePass tool (switch or sub-menu) |
 | `<Space>e` | Toggle HTTP explorer sidebar |
 | `<Space>q` | Quit |
 | `<Space>1-9` | Switch to tool by index |
@@ -163,6 +165,52 @@ Trailing `/` creates folder-only paths. Existing folders are reused.
 | `Ctrl-d` / `Ctrl-u` | Half-page down / up |
 | `Tab` | Switch between Body and Headers tabs |
 
+### KeePass Tool — Sidebar (File History)
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move down / up |
+| `Enter` | Open selected file (prompts for PIN or password) |
+| `dd` | Remove file from history (with y/n confirmation) |
+| `gg` / `G` | Go to top / bottom |
+| `Ctrl-d` / `Ctrl-u` | Half-page down / up |
+| `Ctrl-l` | Move focus to tree panel |
+
+### KeePass Tool — Tree Panel
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move down / up |
+| `h` | Collapse group / go to parent |
+| `l` / `Enter` | Expand group |
+| `gg` / `G` | Go to top / bottom |
+| `Ctrl-d` / `Ctrl-u` | Half-page down / up |
+| `Ctrl-h` | Move focus to sidebar |
+| `Ctrl-l` | Move focus to detail panel |
+| `/` | Search entries (telescope-style overlay) |
+| `p` | Toggle password visibility in detail panel |
+| `yu` | Copy username to clipboard |
+| `yp` | Copy password to clipboard (auto-clears after 30s) |
+| `yU` | Copy URL to clipboard |
+
+### KeePass Tool — Detail Panel
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Scroll up / down |
+| `p` | Toggle password visibility |
+| `yu` / `yp` / `yU` | Copy username / password / URL |
+| `Ctrl-h` | Move focus to tree panel |
+
+### KeePass Tool — Leader Keys
+
+| Key | Action |
+|-----|--------|
+| `<Space>ko` | Open file picker (`~/keepass`) |
+| `<Space>ke` | Toggle sidebar |
+| `<Space>ks` | Search entries |
+| `:open <path>` | Open a `.kdbx` file |
+
 ### Insert Mode (text input)
 
 | Key | Action |
@@ -207,14 +255,23 @@ rstools/
 │   │       ├── lib.rs         # Tool trait impl, input handling, state
 │   │       ├── model.rs       # Todo struct, SQLite CRUD operations
 │   │       └── ui.rs          # Todo list and input rendering
-│   └── rstools-http/         # HTTP client & API explorer
+│   ├── rstools-http/         # HTTP client & API explorer
+│   │   └── src/
+│   │       ├── lib.rs         # Tool trait impl, key handling, path creation
+│   │       ├── model.rs       # Data models, SQLite CRUD (entries, requests, headers, params)
+│   │       ├── sidebar.rs     # Tree state, flatten/sort, clipboard, navigation
+│   │       ├── request_panel.rs # Request editor state (URL, headers, body, response)
+│   │       ├── executor.rs    # Async HTTP executor (background tokio runtime)
+│   │       └── ui.rs          # Full UI rendering (sidebar, request panel, response viewer)
+│   └── rstools-keepass/      # KeePass KDBX4 vault viewer
 │       └── src/
-│           ├── lib.rs         # Tool trait impl, key handling, path creation
-│           ├── model.rs       # Data models, SQLite CRUD (entries, requests, headers, params)
-│           ├── sidebar.rs     # Tree state, flatten/sort, clipboard, navigation
-│           ├── request_panel.rs # Request editor state (URL, headers, body, response)
-│           ├── executor.rs    # Async HTTP executor (background tokio runtime)
-│           └── ui.rs          # Full UI rendering (sidebar, request panel, response viewer)
+│           ├── lib.rs         # Tool trait impl, key handling, PIN/password prompts
+│           ├── model.rs       # File history, SQLite CRUD, PIN storage
+│           ├── crypto.rs      # AES-256-GCM PIN encryption, Argon2id key derivation
+│           ├── sidebar.rs     # File history list, navigation, PIN status
+│           ├── vault.rs       # KDBX4 parser, tree structure, search collection
+│           ├── detail.rs      # Entry detail panel state, field display
+│           └── ui.rs          # Full UI rendering (sidebar, tree, detail, overlays)
 ```
 
 ### How it works
