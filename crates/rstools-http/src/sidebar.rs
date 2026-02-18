@@ -1,462 +1,84 @@
+// Re-export generic tree sidebar types, specialized for HTTP.
+// HttpEntry implements TreeEntry, so TreeSidebar<HttpEntry> is our sidebar type.
+
 use crate::model::{self, EntryType, HttpEntry};
 use anyhow::Result;
+use rstools_core::tree_sidebar::TreeEntry;
+pub use rstools_core::tree_sidebar::{
+    find_node, find_node_mut, find_parent_id, render_tree_sidebar, ClipboardItem, ClipboardMode,
+    FlatEntry, SidebarInput, TreeNode, TreeSidebar, TreeSidebarRenderConfig,
+};
 use rusqlite::Connection;
 
-/// A node in the in-memory tree representation.
-#[derive(Debug, Clone)]
-pub struct TreeNode {
-    pub entry: HttpEntry,
-    pub children: Vec<TreeNode>,
-    pub expanded: bool,
-}
-
-/// A flattened entry for rendering — one visible line in the sidebar.
-#[derive(Debug, Clone)]
-pub struct FlatEntry {
-    pub entry_id: i64,
-    pub depth: usize,
-    pub name: String,
-    pub entry_type: EntryType,
-    pub is_expanded: bool,
-    pub has_children: bool,
-    /// For each depth level 0..depth, whether a vertical guide line (│) should
-    /// be drawn. True when the ancestor at that depth has more siblings below.
-    pub guide_depths: Vec<bool>,
-}
-
-/// Clipboard operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClipboardMode {
-    Copy,
-    Cut,
-}
-
-/// Item stored in the clipboard.
-#[derive(Debug, Clone)]
-pub struct ClipboardItem {
-    pub entry_id: i64,
-    pub mode: ClipboardMode,
-}
-
-/// What kind of input the sidebar is currently waiting for.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SidebarInput {
-    /// No input active.
-    None,
-    /// Adding a new entry (path string).
-    Adding,
-    /// Renaming the selected entry.
-    Renaming,
-    /// Confirming deletion of an entry.
-    ConfirmDelete,
-}
-
-/// The full sidebar state.
-pub struct SidebarState {
-    /// Tree roots (top-level entries).
-    pub roots: Vec<TreeNode>,
-    /// Flattened visible entries for rendering and navigation.
-    pub flat_view: Vec<FlatEntry>,
-    /// Currently selected index into flat_view.
-    pub selected: usize,
-    /// Clipboard for copy/cut/paste.
-    pub clipboard: Option<ClipboardItem>,
-    /// Current input mode for the sidebar.
-    pub input_mode: SidebarInput,
-    /// Text input buffer.
-    pub input_buffer: String,
-    /// Cursor position in the input buffer.
-    pub input_cursor: usize,
-    /// Whether the sidebar is visible.
-    pub visible: bool,
-}
-
-impl SidebarState {
-    pub fn new() -> Self {
-        Self {
-            roots: Vec::new(),
-            flat_view: Vec::new(),
-            selected: 0,
-            clipboard: None,
-            input_mode: SidebarInput::None,
-            input_buffer: String::new(),
-            input_cursor: 0,
-            visible: true,
-        }
+/// Implement TreeEntry for HttpEntry so we can use TreeSidebar<HttpEntry>.
+impl TreeEntry for HttpEntry {
+    fn id(&self) -> i64 {
+        self.id
     }
+    fn parent_id(&self) -> Option<i64> {
+        self.parent_id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn is_folder(&self) -> bool {
+        self.entry_type == EntryType::Folder
+    }
+    fn is_expanded(&self) -> bool {
+        self.expanded
+    }
+}
 
+/// Type alias for the HTTP sidebar.
+pub type SidebarState = TreeSidebar<HttpEntry>;
+
+/// Extension trait for HTTP-specific sidebar operations that need DB access.
+pub trait HttpSidebarExt {
+    fn reload(&mut self, conn: &Connection) -> Result<()>;
+    fn toggle_expand_persist(&mut self, conn: &Connection) -> bool;
+    fn expand_selected_persist(&mut self, conn: &Connection) -> bool;
+    fn collapse_or_parent_persist(&mut self, conn: &Connection);
+}
+
+impl HttpSidebarExt for SidebarState {
     /// Reload the tree from the database.
-    pub fn reload(&mut self, conn: &Connection) -> Result<()> {
-        let entries = crate::model::list_entries(conn)?;
-        self.roots = build_tree(&entries, None);
-        sort_tree(&mut self.roots);
-        self.rebuild_flat_view();
+    fn reload(&mut self, conn: &Connection) -> Result<()> {
+        let entries = model::list_entries(conn)?;
+        self.reload_from_entries(&entries);
         Ok(())
     }
 
-    /// Rebuild the flat_view from the current tree state, preserving selection if possible.
-    pub fn rebuild_flat_view(&mut self) {
-        let old_id = self.selected_entry_id();
-        self.flat_view.clear();
-        flatten_tree(&self.roots, 0, &[], &mut self.flat_view);
-
-        // Try to restore selection by entry ID
-        if let Some(id) = old_id {
-            if let Some(pos) = self.flat_view.iter().position(|e| e.entry_id == id) {
-                self.selected = pos;
-                return;
-            }
-        }
-
-        // Clamp selection: allow selected == flat_view.len() (the blank root line)
-        if self.selected > self.max_selectable() {
-            self.selected = self.max_selectable();
-        }
-    }
-
-    /// The maximum selectable index: flat_view.len() is the blank root line.
-    fn max_selectable(&self) -> usize {
-        self.flat_view.len()
-    }
-
-    /// Whether the cursor is on the blank root line (one past last entry).
-    pub fn is_on_blank_line(&self) -> bool {
-        self.selected == self.flat_view.len() && !self.flat_view.is_empty()
-    }
-
-    /// Get the currently selected flat entry, if any.
-    pub fn selected_entry(&self) -> Option<&FlatEntry> {
-        self.flat_view.get(self.selected)
-    }
-
-    /// Get the entry ID of the currently selected entry.
-    pub fn selected_entry_id(&self) -> Option<i64> {
-        self.selected_entry().map(|e| e.entry_id)
-    }
-
-    /// Move selection down. Can go one past last entry (blank root line).
-    pub fn move_down(&mut self) {
-        if self.selected < self.max_selectable() {
-            self.selected += 1;
-        }
-    }
-
-    /// Move selection up.
-    pub fn move_up(&mut self) {
-        if self.selected > 0 {
-            self.selected -= 1;
-        }
-    }
-
-    /// Go to the top of the list.
-    pub fn goto_top(&mut self) {
-        self.selected = 0;
-    }
-
-    /// Go to the bottom of the list (the blank root line).
-    pub fn goto_bottom(&mut self) {
-        self.selected = self.max_selectable();
-    }
-
-    /// Half-page down.
-    pub fn half_page_down(&mut self, visible_lines: usize) {
-        let half = visible_lines / 2;
-        self.selected = (self.selected + half).min(self.max_selectable());
-    }
-
-    /// Half-page up.
-    pub fn half_page_up(&mut self, visible_lines: usize) {
-        let half = visible_lines / 2;
-        self.selected = self.selected.saturating_sub(half);
-    }
-
-    /// Toggle expansion of the selected folder.
-    /// Returns true if the entry was a folder that was toggled.
-    pub fn toggle_expand(&mut self, conn: &Connection) -> bool {
-        if let Some(entry) = self.selected_entry() {
-            if entry.entry_type == EntryType::Folder {
-                let entry_id = entry.entry_id;
-                if let Some(node) = find_node_mut(&mut self.roots, entry_id) {
-                    node.expanded = !node.expanded;
-                    let _ = model::set_entry_expanded(conn, entry_id, node.expanded);
-                    self.rebuild_flat_view();
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    /// Expand the selected folder (no-op if already expanded or not a folder).
-    pub fn expand_selected(&mut self, conn: &Connection) -> bool {
-        if let Some(entry) = self.selected_entry() {
-            if entry.entry_type == EntryType::Folder && !entry.is_expanded {
-                let entry_id = entry.entry_id;
-                if let Some(node) = find_node_mut(&mut self.roots, entry_id) {
-                    node.expanded = true;
-                    let _ = model::set_entry_expanded(conn, entry_id, true);
-                    self.rebuild_flat_view();
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    /// Collapse the selected folder, or move to parent if already collapsed or a query.
-    pub fn collapse_or_parent(&mut self, conn: &Connection) {
-        if let Some(entry) = self.selected_entry() {
-            let entry_id = entry.entry_id;
-
-            // If it's an expanded folder, collapse it
-            if entry.entry_type == EntryType::Folder && entry.is_expanded {
-                if let Some(node) = find_node_mut(&mut self.roots, entry_id) {
-                    node.expanded = false;
-                    let _ = model::set_entry_expanded(conn, entry_id, false);
-                    self.rebuild_flat_view();
-                    return;
-                }
-            }
-
-            // Otherwise, move to parent
-            let parent_id = find_parent_id(&self.roots, entry_id);
-            if let Some(pid) = parent_id {
-                if let Some(pos) = self.flat_view.iter().position(|e| e.entry_id == pid) {
-                    self.selected = pos;
-                }
-            }
-        }
-    }
-
-    /// Start the "add entry" input mode.
-    pub fn start_add(&mut self) {
-        self.input_mode = SidebarInput::Adding;
-        self.input_buffer.clear();
-        self.input_cursor = 0;
-    }
-
-    /// Start the "rename entry" input mode, pre-filled with current name.
-    pub fn start_rename(&mut self) {
-        let name = self.selected_entry().map(|e| e.name.clone());
-        if let Some(name) = name {
-            self.input_mode = SidebarInput::Renaming;
-            self.input_cursor = name.len();
-            self.input_buffer = name;
-        }
-    }
-
-    /// Start the delete confirmation.
-    pub fn start_delete(&mut self) {
-        if self.selected_entry().is_some() {
-            self.input_mode = SidebarInput::ConfirmDelete;
-            self.input_buffer.clear();
-            self.input_cursor = 0;
-        }
-    }
-
-    /// Cancel any active input.
-    pub fn cancel_input(&mut self) {
-        self.input_mode = SidebarInput::None;
-        self.input_buffer.clear();
-        self.input_cursor = 0;
-    }
-
-    /// Copy the selected entry to clipboard.
-    pub fn copy_selected(&mut self) {
-        if let Some(entry) = self.selected_entry() {
-            self.clipboard = Some(ClipboardItem {
-                entry_id: entry.entry_id,
-                mode: ClipboardMode::Copy,
-            });
-        }
-    }
-
-    /// Cut the selected entry to clipboard.
-    pub fn cut_selected(&mut self) {
-        if let Some(entry) = self.selected_entry() {
-            self.clipboard = Some(ClipboardItem {
-                entry_id: entry.entry_id,
-                mode: ClipboardMode::Cut,
-            });
-        }
-    }
-
-    /// Get the parent_id for pasting: if selected entry is a folder, paste inside it;
-    /// otherwise paste in the same parent as the selected entry.
-    pub fn paste_target_parent_id(&self) -> Option<i64> {
-        if let Some(entry) = self.selected_entry() {
-            if entry.entry_type == EntryType::Folder {
-                Some(entry.entry_id)
-            } else {
-                // Find the parent of the selected entry
-                find_parent_id(&self.roots, entry.entry_id)
-            }
+    /// Toggle expansion of the selected folder, persisting to DB.
+    fn toggle_expand_persist(&mut self, conn: &Connection) -> bool {
+        if let Some((entry_id, new_state)) = self.toggle_expand() {
+            let _ = model::set_entry_expanded(conn, entry_id, new_state);
+            true
         } else {
-            None // Root level
+            false
         }
     }
 
-    /// Insert a character into the input buffer at the cursor position.
-    pub fn input_insert_char(&mut self, c: char) {
-        self.input_buffer.insert(self.input_cursor, c);
-        self.input_cursor += c.len_utf8();
-    }
-
-    /// Delete the character before the cursor in the input buffer.
-    pub fn input_backspace(&mut self) {
-        if self.input_cursor > 0 {
-            // Find the previous character boundary
-            let prev = self.input_buffer[..self.input_cursor]
-                .char_indices()
-                .next_back()
-                .map(|(i, _)| i)
-                .unwrap_or(0);
-            self.input_buffer.drain(prev..self.input_cursor);
-            self.input_cursor = prev;
+    /// Expand the selected folder, persisting to DB.
+    fn expand_selected_persist(&mut self, conn: &Connection) -> bool {
+        if let Some((entry_id, new_state)) = self.expand_selected() {
+            let _ = model::set_entry_expanded(conn, entry_id, new_state);
+            true
+        } else {
+            false
         }
     }
 
-    /// Move cursor left in the input buffer.
-    pub fn input_cursor_left(&mut self) {
-        if self.input_cursor > 0 {
-            self.input_cursor = self.input_buffer[..self.input_cursor]
-                .char_indices()
-                .next_back()
-                .map(|(i, _)| i)
-                .unwrap_or(0);
+    /// Collapse or navigate to parent, persisting to DB.
+    fn collapse_or_parent_persist(&mut self, conn: &Connection) {
+        if let Some((entry_id, new_state)) = self.collapse_or_parent() {
+            let _ = model::set_entry_expanded(conn, entry_id, new_state);
         }
     }
-
-    /// Move cursor right in the input buffer.
-    pub fn input_cursor_right(&mut self) {
-        if self.input_cursor < self.input_buffer.len() {
-            self.input_cursor = self.input_buffer[self.input_cursor..]
-                .char_indices()
-                .nth(1)
-                .map(|(i, _)| self.input_cursor + i)
-                .unwrap_or(self.input_buffer.len());
-        }
-    }
-}
-
-/// Build a tree from a flat list of entries, starting from entries with the given parent_id.
-/// The `expanded` state is read from the persisted `HttpEntry.expanded` field.
-fn build_tree(entries: &[HttpEntry], parent_id: Option<i64>) -> Vec<TreeNode> {
-    entries
-        .iter()
-        .filter(|e| e.parent_id == parent_id)
-        .map(|e| {
-            let children = build_tree(entries, Some(e.id));
-            TreeNode {
-                entry: e.clone(),
-                children,
-                expanded: e.expanded,
-            }
-        })
-        .collect()
-}
-
-/// Sort tree nodes: folders first, then queries, both alphabetically. Recursive.
-fn sort_tree(nodes: &mut Vec<TreeNode>) {
-    nodes.sort_by(|a, b| {
-        let type_ord = match (&a.entry.entry_type, &b.entry.entry_type) {
-            (EntryType::Folder, EntryType::Query) => std::cmp::Ordering::Less,
-            (EntryType::Query, EntryType::Folder) => std::cmp::Ordering::Greater,
-            _ => std::cmp::Ordering::Equal,
-        };
-        type_ord.then_with(|| {
-            a.entry
-                .name
-                .to_lowercase()
-                .cmp(&b.entry.name.to_lowercase())
-        })
-    });
-    for node in nodes.iter_mut() {
-        sort_tree(&mut node.children);
-    }
-}
-
-/// Flatten visible tree nodes into a list for rendering.
-/// `parent_guides` tracks whether each ancestor depth level has an expanded
-/// folder, so we know where to draw vertical indent guide lines (│).
-/// A guide line is drawn at a depth whenever an ancestor folder at that depth
-/// is expanded and its children are being shown — this visually connects
-/// children to their parent regardless of whether the parent has more siblings.
-fn flatten_tree(
-    nodes: &[TreeNode],
-    depth: usize,
-    parent_guides: &[bool],
-    out: &mut Vec<FlatEntry>,
-) {
-    for node in nodes.iter() {
-        // Build guide_depths for this entry: inherit parent guides
-        let guide_depths = parent_guides.to_vec();
-
-        out.push(FlatEntry {
-            entry_id: node.entry.id,
-            depth,
-            name: node.entry.name.clone(),
-            entry_type: node.entry.entry_type,
-            is_expanded: node.expanded,
-            has_children: !node.children.is_empty(),
-            guide_depths,
-        });
-
-        if node.expanded && !node.children.is_empty() {
-            // For children, extend the guides: this node's depth always gets
-            // a guide line to visually show the indentation/structure.
-            let mut child_guides = parent_guides.to_vec();
-            child_guides.push(true);
-            flatten_tree(&node.children, depth + 1, &child_guides, out);
-        }
-    }
-}
-
-/// Find an immutable reference to a node by entry ID.
-pub fn find_node(nodes: &[TreeNode], id: i64) -> Option<&TreeNode> {
-    for node in nodes {
-        if node.entry.id == id {
-            return Some(node);
-        }
-        if let Some(found) = find_node(&node.children, id) {
-            return Some(found);
-        }
-    }
-    None
-}
-
-/// Find a mutable reference to a node by entry ID.
-pub fn find_node_mut(nodes: &mut Vec<TreeNode>, id: i64) -> Option<&mut TreeNode> {
-    for node in nodes.iter_mut() {
-        if node.entry.id == id {
-            return Some(node);
-        }
-        if let Some(found) = find_node_mut(&mut node.children, id) {
-            return Some(found);
-        }
-    }
-    None
-}
-
-/// Find the parent ID of an entry by searching the tree.
-pub fn find_parent_id(nodes: &[TreeNode], target_id: i64) -> Option<i64> {
-    for node in nodes {
-        for child in &node.children {
-            if child.entry.id == target_id {
-                return Some(node.entry.id);
-            }
-        }
-        if let Some(found) = find_parent_id(&node.children, target_id) {
-            return Some(found);
-        }
-    }
-    None
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model;
     use rstools_core::db::open_memory_db;
 
     fn setup_db() -> Connection {
@@ -501,12 +123,12 @@ mod tests {
         assert_eq!(sidebar.flat_view.len(), 1);
 
         // Expand
-        sidebar.toggle_expand(&conn);
+        sidebar.toggle_expand_persist(&conn);
         assert_eq!(sidebar.flat_view.len(), 2);
         assert_eq!(sidebar.flat_view[1].name, "get-users");
 
         // Collapse
-        sidebar.toggle_expand(&conn);
+        sidebar.toggle_expand_persist(&conn);
         assert_eq!(sidebar.flat_view.len(), 1);
     }
 
@@ -557,13 +179,13 @@ mod tests {
         sidebar.reload(&conn).unwrap();
 
         assert_eq!(sidebar.flat_view[0].name, "a-folder");
-        assert_eq!(sidebar.flat_view[0].entry_type, EntryType::Folder);
+        assert!(sidebar.flat_view[0].is_folder);
         assert_eq!(sidebar.flat_view[1].name, "c-folder");
-        assert_eq!(sidebar.flat_view[1].entry_type, EntryType::Folder);
+        assert!(sidebar.flat_view[1].is_folder);
         assert_eq!(sidebar.flat_view[2].name, "b-query");
-        assert_eq!(sidebar.flat_view[2].entry_type, EntryType::Query);
+        assert!(!sidebar.flat_view[2].is_folder);
         assert_eq!(sidebar.flat_view[3].name, "z-query");
-        assert_eq!(sidebar.flat_view[3].entry_type, EntryType::Query);
+        assert!(!sidebar.flat_view[3].is_folder);
     }
 
     #[test]
@@ -608,17 +230,9 @@ mod tests {
 
         // Expand all folders
         sidebar.selected = 0; // a-folder
-        sidebar.toggle_expand(&conn);
+        sidebar.toggle_expand_persist(&conn);
         sidebar.selected = 1; // sub
-        sidebar.toggle_expand(&conn);
-
-        // Expected flat view (guides always true for children of expanded folders):
-        // 0: a-folder          depth=0, guides=[]
-        // 1: │ sub              depth=1, guides=[true]
-        // 2: │ │ query-1        depth=2, guides=[true, true]
-        // 3: │ │ query-2        depth=2, guides=[true, true]
-        // 4: │ query-3          depth=1, guides=[true]
-        // 5: b-query            depth=0, guides=[]
+        sidebar.toggle_expand_persist(&conn);
 
         assert_eq!(sidebar.flat_view.len(), 6);
 
@@ -651,10 +265,8 @@ mod tests {
         sidebar.reload(&conn).unwrap();
 
         sidebar.selected = 0;
-        sidebar.toggle_expand(&conn);
+        sidebar.toggle_expand_persist(&conn);
 
-        // Even when only-folder is the last sibling, its children still get
-        // a guide line to show the indentation structure
         assert_eq!(sidebar.flat_view[1].guide_depths, vec![true]);
     }
 
@@ -664,11 +276,9 @@ mod tests {
         let mut sidebar = SidebarState::new();
         sidebar.reload(&conn).unwrap();
 
-        // Empty tree: selected starts at 0, which is the blank line
         assert_eq!(sidebar.selected, 0);
         assert!(sidebar.flat_view.is_empty());
         assert!(sidebar.selected_entry().is_none());
-        // Not considered "on blank line" when tree is empty (no entries to be past)
         assert!(!sidebar.is_on_blank_line());
     }
 

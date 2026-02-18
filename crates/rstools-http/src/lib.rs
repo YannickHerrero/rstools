@@ -19,7 +19,7 @@ use rusqlite::Connection;
 use executor::{HttpExecutor, HttpRequestCmd};
 use model::EntryType;
 use request_panel::{KvField, PanelFocus, RequestPanel, ResponseData, ResponseSection, Section};
-use sidebar::{ClipboardMode, SidebarInput, SidebarState};
+use sidebar::{ClipboardMode, HttpSidebarExt, SidebarInput, SidebarState};
 
 /// Cached response data for a query, keyed by entry_id.
 /// Allows restoring the last response when switching back to a previously-run query.
@@ -45,7 +45,7 @@ impl HttpTool {
     pub fn new(conn: Connection) -> anyhow::Result<Self> {
         model::init_db(&conn)?;
         let mut sidebar = SidebarState::new();
-        sidebar.reload(&conn)?;
+        HttpSidebarExt::reload(&mut sidebar, &conn)?;
         let executor = HttpExecutor::spawn();
         Ok(Self {
             sidebar,
@@ -234,22 +234,22 @@ impl HttpTool {
                 Action::None
             }
             KeyCode::Char('h') => {
-                self.sidebar.collapse_or_parent(&self.conn);
+                self.sidebar.collapse_or_parent_persist(&self.conn);
                 Action::None
             }
             KeyCode::Char('l') => {
                 // l only expands folders (never collapses), like neo-tree
                 if let Some(entry) = self.sidebar.selected_entry() {
-                    if entry.entry_type == EntryType::Folder {
-                        self.sidebar.expand_selected(&self.conn);
+                    if entry.is_folder {
+                        self.sidebar.expand_selected_persist(&self.conn);
                     }
                 }
                 Action::None
             }
             KeyCode::Enter => {
                 if let Some(entry) = self.sidebar.selected_entry() {
-                    if entry.entry_type == EntryType::Folder {
-                        self.sidebar.toggle_expand(&self.conn);
+                    if entry.is_folder {
+                        self.sidebar.toggle_expand_persist(&self.conn);
                     } else {
                         // Open query in the content panel
                         let id = entry.entry_id;
@@ -384,7 +384,7 @@ impl HttpTool {
                 if !input.is_empty() {
                     if let Some(entry_id) = self.sidebar.selected_entry_id() {
                         let _ = model::rename_entry(&self.conn, entry_id, &input);
-                        let _ = self.sidebar.reload(&self.conn);
+                        let _ = HttpSidebarExt::reload(&mut self.sidebar, &self.conn);
                     }
                 }
             }
@@ -439,7 +439,7 @@ impl HttpTool {
             }
         }
 
-        let _ = self.sidebar.reload(&self.conn);
+        let _ = HttpSidebarExt::reload(&mut self.sidebar, &self.conn);
 
         // Expand parent folders so the new entry is visible
         self.expand_path_to_parent(parent_id);
@@ -450,7 +450,7 @@ impl HttpTool {
     /// If selected entry is a collapsed folder or a query, create at the same level.
     fn get_creation_parent_id(&self) -> Option<i64> {
         if let Some(entry) = self.sidebar.selected_entry() {
-            if entry.entry_type == EntryType::Folder && entry.is_expanded {
+            if entry.is_folder && entry.is_expanded {
                 Some(entry.entry_id)
             } else {
                 // Same level as selected entry
@@ -463,6 +463,7 @@ impl HttpTool {
 
     /// Find an existing folder with the given name under the given parent.
     fn find_existing_folder(&self, parent_id: Option<i64>, name: &str) -> Option<i64> {
+        use rstools_core::tree_sidebar::TreeEntry;
         // Search the tree for a matching folder
         let nodes = if let Some(pid) = parent_id {
             // Find the parent node and search its children
@@ -474,10 +475,10 @@ impl HttpTool {
         };
 
         for node in nodes {
-            if node.entry.entry_type == EntryType::Folder
-                && node.entry.name.eq_ignore_ascii_case(name)
+            if node.entry.is_folder()
+                && node.entry.name().eq_ignore_ascii_case(name)
             {
-                return Some(node.entry.id);
+                return Some(node.entry.id());
             }
         }
         None
@@ -486,22 +487,18 @@ impl HttpTool {
     /// Expand all parent folders on the path to make the entry visible.
     fn expand_path_to_parent(&mut self, target_parent_id: Option<i64>) {
         if let Some(pid) = target_parent_id {
-            // Collect the chain of ancestors
-            let mut to_expand = vec![pid];
-            let mut current = pid;
-            while let Some(grandparent) = sidebar::find_parent_id(&self.sidebar.roots, current) {
-                to_expand.push(grandparent);
-                current = grandparent;
+            let changed = self.sidebar.expand_to_entry(pid);
+            for (id, _) in &changed {
+                let _ = model::set_entry_expanded(&self.conn, *id, true);
             }
-
-            // Expand from root down
-            for id in to_expand.into_iter().rev() {
-                if let Some(node) = sidebar::find_node_mut(&mut self.sidebar.roots, id) {
+            // Also expand the target itself
+            if let Some(node) = sidebar::find_node_mut(&mut self.sidebar.roots, pid) {
+                if !node.expanded {
                     node.expanded = true;
-                    let _ = model::set_entry_expanded(&self.conn, id, true);
+                    let _ = model::set_entry_expanded(&self.conn, pid, true);
+                    self.sidebar.rebuild_flat_view();
                 }
             }
-            self.sidebar.rebuild_flat_view();
         }
     }
 
@@ -517,7 +514,7 @@ impl HttpTool {
             }
             // Remove cached response for deleted entry
             self.response_cache.remove(&entry_id);
-            let _ = self.sidebar.reload(&self.conn);
+            let _ = HttpSidebarExt::reload(&mut self.sidebar, &self.conn);
         }
     }
 
@@ -543,7 +540,7 @@ impl HttpTool {
             }
         }
 
-        let _ = self.sidebar.reload(&self.conn);
+        let _ = HttpSidebarExt::reload(&mut self.sidebar, &self.conn);
         self.expand_path_to_parent(target_parent_id);
     }
 
@@ -1098,8 +1095,8 @@ impl HttpTool {
 
                 if was_selected {
                     if let Some(entry) = self.sidebar.selected_entry() {
-                        if entry.entry_type == EntryType::Folder {
-                            self.sidebar.toggle_expand(&self.conn);
+                        if entry.is_folder {
+                            self.sidebar.toggle_expand_persist(&self.conn);
                         } else {
                             // Click on already-selected query: open it
                             let id = entry.entry_id;
@@ -1329,42 +1326,24 @@ impl HttpTool {
 
     /// Select and open a query by entry ID from telescope.
     fn select_query_by_entry_id(&mut self, entry_id: i64) -> bool {
-        let Some((name, entry_type)) = sidebar::find_node(&self.sidebar.roots, entry_id)
-            .map(|n| (n.entry.name.clone(), n.entry.entry_type))
-        else {
+        use rstools_core::tree_sidebar::TreeEntry;
+
+        let Some(node) = sidebar::find_node(&self.sidebar.roots, entry_id) else {
             return false;
         };
 
-        if entry_type != EntryType::Query {
+        if node.entry.is_folder() {
             return false;
         }
 
-        let mut ancestors = Vec::new();
-        let mut current = entry_id;
-        while let Some(parent_id) = sidebar::find_parent_id(&self.sidebar.roots, current) {
-            ancestors.push(parent_id);
-            current = parent_id;
+        let name = node.entry.name().to_string();
+
+        let changed = self.sidebar.expand_to_entry(entry_id);
+        for (id, _) in &changed {
+            let _ = model::set_entry_expanded(&self.conn, *id, true);
         }
 
-        for ancestor_id in ancestors.into_iter().rev() {
-            if let Some(node) = sidebar::find_node_mut(&mut self.sidebar.roots, ancestor_id) {
-                if !node.expanded {
-                    node.expanded = true;
-                    let _ = model::set_entry_expanded(&self.conn, ancestor_id, true);
-                }
-            }
-        }
-
-        self.sidebar.rebuild_flat_view();
-        if let Some(position) = self
-            .sidebar
-            .flat_view
-            .iter()
-            .position(|entry| entry.entry_id == entry_id)
-        {
-            self.sidebar.selected = position;
-        }
-
+        self.sidebar.select_entry(entry_id);
         self.open_query(entry_id, &name);
         true
     }
@@ -1378,22 +1357,24 @@ impl HttpTool {
 
     fn collect_items_recursive(
         &self,
-        nodes: &[sidebar::TreeNode],
+        nodes: &[sidebar::TreeNode<model::HttpEntry>],
         path_prefix: &str,
         items: &mut Vec<TelescopeItem>,
     ) {
+        use rstools_core::tree_sidebar::TreeEntry;
         for node in nodes {
+            let name = node.entry.name().to_string();
             let full_path = if path_prefix.is_empty() {
-                node.entry.name.clone()
+                name.clone()
             } else {
-                format!("{}/{}", path_prefix, node.entry.name)
+                format!("{}/{}", path_prefix, name)
             };
 
-            if node.entry.entry_type == EntryType::Query {
+            if !node.entry.is_folder() {
                 items.push(TelescopeItem {
-                    label: node.entry.name.clone(),
+                    label: name,
                     description: full_path.clone(),
-                    id: format!("http:{}", node.entry.id),
+                    id: format!("http:{}", node.entry.id()),
                 });
             }
 
@@ -1650,7 +1631,7 @@ impl Tool for HttpTool {
     }
 
     fn on_focus(&mut self) {
-        let _ = self.sidebar.reload(&self.conn);
+        let _ = HttpSidebarExt::reload(&mut self.sidebar, &self.conn);
     }
 
     fn handle_command(&mut self, cmd: &str) -> bool {
@@ -1678,7 +1659,7 @@ mod tests {
 
         assert_eq!(tool.sidebar.flat_view.len(), 1);
         assert_eq!(tool.sidebar.flat_view[0].name, "get-users");
-        assert_eq!(tool.sidebar.flat_view[0].entry_type, EntryType::Query);
+        assert!(!tool.sidebar.flat_view[0].is_folder);
     }
 
     #[test]
@@ -1689,13 +1670,13 @@ mod tests {
         // All folders should be expanded to show the new entry
         assert_eq!(tool.sidebar.flat_view.len(), 3);
         assert_eq!(tool.sidebar.flat_view[0].name, "group A");
-        assert_eq!(tool.sidebar.flat_view[0].entry_type, EntryType::Folder);
+        assert!(tool.sidebar.flat_view[0].is_folder);
         assert_eq!(tool.sidebar.flat_view[0].depth, 0);
         assert_eq!(tool.sidebar.flat_view[1].name, "api");
-        assert_eq!(tool.sidebar.flat_view[1].entry_type, EntryType::Folder);
+        assert!(tool.sidebar.flat_view[1].is_folder);
         assert_eq!(tool.sidebar.flat_view[1].depth, 1);
         assert_eq!(tool.sidebar.flat_view[2].name, "get-user");
-        assert_eq!(tool.sidebar.flat_view[2].entry_type, EntryType::Query);
+        assert!(!tool.sidebar.flat_view[2].is_folder);
         assert_eq!(tool.sidebar.flat_view[2].depth, 2);
     }
 
@@ -1706,9 +1687,9 @@ mod tests {
 
         assert_eq!(tool.sidebar.flat_view.len(), 2);
         assert_eq!(tool.sidebar.flat_view[0].name, "group A");
-        assert_eq!(tool.sidebar.flat_view[0].entry_type, EntryType::Folder);
+        assert!(tool.sidebar.flat_view[0].is_folder);
         assert_eq!(tool.sidebar.flat_view[1].name, "api");
-        assert_eq!(tool.sidebar.flat_view[1].entry_type, EntryType::Folder);
+        assert!(tool.sidebar.flat_view[1].is_folder);
     }
 
     #[test]
@@ -1745,7 +1726,7 @@ mod tests {
 
         // Collapse "api" folder so we're at root level context
         tool.sidebar.selected = 0;
-        tool.sidebar.collapse_or_parent(&tool.conn); // collapse the api folder
+        tool.sidebar.collapse_or_parent_persist(&tool.conn); // collapse the api folder
 
         // Now create another entry in same "api" folder from root context
         tool.create_entries_from_path("api/post-user");
@@ -1782,7 +1763,7 @@ mod tests {
         // Submit rename
         let entry_id = tool.sidebar.selected_entry_id().unwrap();
         model::rename_entry(&tool.conn, entry_id, &tool.sidebar.input_buffer).unwrap();
-        tool.sidebar.reload(&tool.conn).unwrap();
+        HttpSidebarExt::reload(&mut tool.sidebar, &tool.conn).unwrap();
 
         assert_eq!(tool.sidebar.flat_view[0].name, "list-users");
     }
@@ -1810,7 +1791,7 @@ mod tests {
 
         // Collapse api so we create backup at root level
         tool.sidebar.selected = 0;
-        tool.sidebar.collapse_or_parent(&tool.conn);
+        tool.sidebar.collapse_or_parent_persist(&tool.conn);
 
         tool.create_entries_from_path("backup/");
 
@@ -1854,7 +1835,7 @@ mod tests {
 
         // Collapse api so we create backup at root level
         tool.sidebar.selected = 0;
-        tool.sidebar.collapse_or_parent(&tool.conn);
+        tool.sidebar.collapse_or_parent_persist(&tool.conn);
 
         tool.create_entries_from_path("backup/");
 
@@ -1866,7 +1847,7 @@ mod tests {
             .position(|e| e.name == "api")
             .unwrap();
         tool.sidebar.selected = api_idx;
-        tool.sidebar.expand_selected(&tool.conn);
+        tool.sidebar.expand_selected_persist(&tool.conn);
 
         let query_idx = tool
             .sidebar
