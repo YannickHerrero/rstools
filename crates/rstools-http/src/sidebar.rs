@@ -1,4 +1,4 @@
-use crate::model::{EntryType, HttpEntry};
+use crate::model::{self, EntryType, HttpEntry};
 use anyhow::Result;
 use rusqlite::Connection;
 
@@ -172,12 +172,13 @@ impl SidebarState {
 
     /// Toggle expansion of the selected folder.
     /// Returns true if the entry was a folder that was toggled.
-    pub fn toggle_expand(&mut self) -> bool {
+    pub fn toggle_expand(&mut self, conn: &Connection) -> bool {
         if let Some(entry) = self.selected_entry() {
             if entry.entry_type == EntryType::Folder {
                 let entry_id = entry.entry_id;
                 if let Some(node) = find_node_mut(&mut self.roots, entry_id) {
                     node.expanded = !node.expanded;
+                    let _ = model::set_entry_expanded(conn, entry_id, node.expanded);
                     self.rebuild_flat_view();
                     return true;
                 }
@@ -187,12 +188,13 @@ impl SidebarState {
     }
 
     /// Expand the selected folder (no-op if already expanded or not a folder).
-    pub fn expand_selected(&mut self) -> bool {
+    pub fn expand_selected(&mut self, conn: &Connection) -> bool {
         if let Some(entry) = self.selected_entry() {
             if entry.entry_type == EntryType::Folder && !entry.is_expanded {
                 let entry_id = entry.entry_id;
                 if let Some(node) = find_node_mut(&mut self.roots, entry_id) {
                     node.expanded = true;
+                    let _ = model::set_entry_expanded(conn, entry_id, true);
                     self.rebuild_flat_view();
                     return true;
                 }
@@ -202,7 +204,7 @@ impl SidebarState {
     }
 
     /// Collapse the selected folder, or move to parent if already collapsed or a query.
-    pub fn collapse_or_parent(&mut self) {
+    pub fn collapse_or_parent(&mut self, conn: &Connection) {
         if let Some(entry) = self.selected_entry() {
             let entry_id = entry.entry_id;
 
@@ -210,6 +212,7 @@ impl SidebarState {
             if entry.entry_type == EntryType::Folder && entry.is_expanded {
                 if let Some(node) = find_node_mut(&mut self.roots, entry_id) {
                     node.expanded = false;
+                    let _ = model::set_entry_expanded(conn, entry_id, false);
                     self.rebuild_flat_view();
                     return;
                 }
@@ -337,6 +340,7 @@ impl SidebarState {
 }
 
 /// Build a tree from a flat list of entries, starting from entries with the given parent_id.
+/// The `expanded` state is read from the persisted `HttpEntry.expanded` field.
 fn build_tree(entries: &[HttpEntry], parent_id: Option<i64>) -> Vec<TreeNode> {
     entries
         .iter()
@@ -346,7 +350,7 @@ fn build_tree(entries: &[HttpEntry], parent_id: Option<i64>) -> Vec<TreeNode> {
             TreeNode {
                 entry: e.clone(),
                 children,
-                expanded: false,
+                expanded: e.expanded,
             }
         })
         .collect()
@@ -497,12 +501,12 @@ mod tests {
         assert_eq!(sidebar.flat_view.len(), 1);
 
         // Expand
-        sidebar.toggle_expand();
+        sidebar.toggle_expand(&conn);
         assert_eq!(sidebar.flat_view.len(), 2);
         assert_eq!(sidebar.flat_view[1].name, "get-users");
 
         // Collapse
-        sidebar.toggle_expand();
+        sidebar.toggle_expand(&conn);
         assert_eq!(sidebar.flat_view.len(), 1);
     }
 
@@ -604,9 +608,9 @@ mod tests {
 
         // Expand all folders
         sidebar.selected = 0; // a-folder
-        sidebar.toggle_expand();
+        sidebar.toggle_expand(&conn);
         sidebar.selected = 1; // sub
-        sidebar.toggle_expand();
+        sidebar.toggle_expand(&conn);
 
         // Expected flat view (guides always true for children of expanded folders):
         // 0: a-folder          depth=0, guides=[]
@@ -647,7 +651,7 @@ mod tests {
         sidebar.reload(&conn).unwrap();
 
         sidebar.selected = 0;
-        sidebar.toggle_expand();
+        sidebar.toggle_expand(&conn);
 
         // Even when only-folder is the last sibling, its children still get
         // a guide line to show the indentation structure

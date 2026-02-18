@@ -224,14 +224,14 @@ impl HttpTool {
                 Action::None
             }
             KeyCode::Char('h') => {
-                self.sidebar.collapse_or_parent();
+                self.sidebar.collapse_or_parent(&self.conn);
                 Action::None
             }
             KeyCode::Char('l') => {
                 // l only expands folders (never collapses), like neo-tree
                 if let Some(entry) = self.sidebar.selected_entry() {
                     if entry.entry_type == EntryType::Folder {
-                        self.sidebar.expand_selected();
+                        self.sidebar.expand_selected(&self.conn);
                     }
                 }
                 Action::None
@@ -239,7 +239,7 @@ impl HttpTool {
             KeyCode::Enter => {
                 if let Some(entry) = self.sidebar.selected_entry() {
                     if entry.entry_type == EntryType::Folder {
-                        self.sidebar.toggle_expand();
+                        self.sidebar.toggle_expand(&self.conn);
                     } else {
                         // Open query in the content panel
                         let id = entry.entry_id;
@@ -488,6 +488,7 @@ impl HttpTool {
             for id in to_expand.into_iter().rev() {
                 if let Some(node) = sidebar::find_node_mut(&mut self.sidebar.roots, id) {
                     node.expanded = true;
+                    let _ = model::set_entry_expanded(&self.conn, id, true);
                 }
             }
             self.sidebar.rebuild_flat_view();
@@ -1373,7 +1374,7 @@ mod tests {
 
         // Collapse "api" folder so we're at root level context
         tool.sidebar.selected = 0;
-        tool.sidebar.collapse_or_parent(); // collapse the api folder
+        tool.sidebar.collapse_or_parent(&tool.conn); // collapse the api folder
 
         // Now create another entry in same "api" folder from root context
         tool.create_entries_from_path("api/post-user");
@@ -1438,7 +1439,7 @@ mod tests {
 
         // Collapse api so we create backup at root level
         tool.sidebar.selected = 0;
-        tool.sidebar.collapse_or_parent();
+        tool.sidebar.collapse_or_parent(&tool.conn);
 
         tool.create_entries_from_path("backup/");
 
@@ -1482,7 +1483,7 @@ mod tests {
 
         // Collapse api so we create backup at root level
         tool.sidebar.selected = 0;
-        tool.sidebar.collapse_or_parent();
+        tool.sidebar.collapse_or_parent(&tool.conn);
 
         tool.create_entries_from_path("backup/");
 
@@ -1494,7 +1495,7 @@ mod tests {
             .position(|e| e.name == "api")
             .unwrap();
         tool.sidebar.selected = api_idx;
-        tool.sidebar.expand_selected();
+        tool.sidebar.expand_selected(&tool.conn);
 
         let query_idx = tool
             .sidebar

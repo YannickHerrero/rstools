@@ -132,6 +132,7 @@ pub struct HttpEntry {
     pub parent_id: Option<i64>,
     pub name: String,
     pub entry_type: EntryType,
+    pub expanded: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -188,13 +189,24 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             sort_order INTEGER NOT NULL DEFAULT 0
         );",
     )?;
+
+    // Migration: add expanded column to http_entries if it doesn't exist yet.
+    let has_expanded: bool = conn
+        .prepare("SELECT 1 FROM pragma_table_info('http_entries') WHERE name = 'expanded'")?
+        .exists([])?;
+    if !has_expanded {
+        conn.execute_batch(
+            "ALTER TABLE http_entries ADD COLUMN expanded INTEGER NOT NULL DEFAULT 0;",
+        )?;
+    }
+
     Ok(())
 }
 
 /// List all entries from the database.
 pub fn list_entries(conn: &Connection) -> Result<Vec<HttpEntry>> {
     let mut stmt = conn.prepare(
-        "SELECT id, parent_id, name, entry_type, created_at, updated_at
+        "SELECT id, parent_id, name, entry_type, expanded, created_at, updated_at
          FROM http_entries
          ORDER BY entry_type ASC, name ASC",
     )?;
@@ -206,8 +218,9 @@ pub fn list_entries(conn: &Connection) -> Result<Vec<HttpEntry>> {
                 parent_id: row.get(1)?,
                 name: row.get(2)?,
                 entry_type: EntryType::from_str(&entry_type_str).unwrap_or(EntryType::Query),
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
+                expanded: row.get::<_, i64>(4)? != 0,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -226,6 +239,15 @@ pub fn add_entry(
         rusqlite::params![parent_id, name, entry_type.as_str()],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+/// Update the expanded state of a folder entry.
+pub fn set_entry_expanded(conn: &Connection, id: i64, expanded: bool) -> Result<()> {
+    conn.execute(
+        "UPDATE http_entries SET expanded = ?1 WHERE id = ?2",
+        rusqlite::params![expanded as i64, id],
+    )?;
+    Ok(())
 }
 
 /// Rename an entry.
@@ -266,7 +288,7 @@ pub fn copy_entry_recursive(
 ) -> Result<i64> {
     // Get the source entry
     let source: HttpEntry = conn.query_row(
-        "SELECT id, parent_id, name, entry_type, created_at, updated_at
+        "SELECT id, parent_id, name, entry_type, expanded, created_at, updated_at
          FROM http_entries WHERE id = ?1",
         rusqlite::params![source_id],
         |row| {
@@ -276,8 +298,9 @@ pub fn copy_entry_recursive(
                 parent_id: row.get(1)?,
                 name: row.get(2)?,
                 entry_type: EntryType::from_str(&entry_type_str).unwrap_or(EntryType::Query),
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
+                expanded: row.get::<_, i64>(4)? != 0,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
             })
         },
     )?;
