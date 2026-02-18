@@ -29,16 +29,19 @@ A vim-centric terminal toolkit built in Rust with [ratatui](https://ratatui.rs):
 
 <p align="center">
   <a href="assets/screenshots/todo-demo.png">
-    <img src="assets/screenshots/todo-demo.png" alt="Todo Tool" width="24%" />
+    <img src="assets/screenshots/todo-demo.png" alt="Todo Tool" width="49%" />
   </a>
   <a href="assets/screenshots/http-demo.png">
-    <img src="assets/screenshots/http-demo.png" alt="HTTP Tool" width="24%" />
+    <img src="assets/screenshots/http-demo.png" alt="HTTP Tool" width="49%" />
   </a>
+</p>
+
+<p align="center">
   <a href="assets/screenshots/keepass-demo.png">
-    <img src="assets/screenshots/keepass-demo.png" alt="KeePass Tool" width="24%" />
+    <img src="assets/screenshots/keepass-demo.png" alt="KeePass Tool" width="49%" />
   </a>
   <a href="assets/screenshots/notes-demo.png">
-    <img src="assets/screenshots/notes-demo.png" alt="Notes Tool" width="24%" />
+    <img src="assets/screenshots/notes-demo.png" alt="Notes Tool" width="49%" />
   </a>
 </p>
 
