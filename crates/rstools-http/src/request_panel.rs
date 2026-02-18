@@ -741,10 +741,8 @@ impl RequestPanel {
 
     /// Move focus to the response panel.
     pub fn focus_response(&mut self) {
-        if self.response.is_some() {
-            self.editing = false;
-            self.panel_focus = PanelFocus::Response;
-        }
+        self.editing = false;
+        self.panel_focus = PanelFocus::Response;
     }
 
     /// Move focus back to the request panel.

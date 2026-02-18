@@ -118,7 +118,9 @@ Trailing `/` creates folder-only paths. Existing folders are reused.
 | Key | Action |
 |-----|--------|
 | `Tab` / `Shift-Tab` | Cycle sections (URL → Params → Headers → Body) |
-| `Ctrl-h/j/k/l` | Navigate between sections and panels |
+| `Ctrl-h` | Move focus to sidebar |
+| `Ctrl-j` | Move focus from request panel to response panel |
+| `Ctrl-k` | Move focus from response to request, or from request to sidebar |
 | `Ctrl-Enter` | Send request |
 | `<Space>s` | Send request (leader key) |
 | `<Space>e` | Toggle explorer sidebar |

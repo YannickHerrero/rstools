@@ -123,7 +123,10 @@ These MUST be consistent across ALL tools:
   - `p` — paste from clipboard (recursive for folders)
 - Keybinds (Normal mode, content panel focused):
   - `Tab` / `Shift-Tab` — cycle sections (URL → Params → Headers → Body)
-  - `Ctrl-h/j/k/l` — navigate between sections and panels
+  - `Ctrl-h` — move focus to sidebar
+  - `Ctrl-j` — move focus from request panel to response panel
+  - `Ctrl-k` — move focus from response to request, or from request to sidebar
+  - `Ctrl-l` — (from sidebar) move focus to content panel
   - `Ctrl-Enter` — send request
   - `<Space>s` — send request (leader key)
   - `m` / `M` — cycle HTTP method forward / backward

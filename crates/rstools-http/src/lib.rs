@@ -529,28 +529,22 @@ impl HttpTool {
             return Action::None;
         }
 
-        // Ctrl-h/j/k/l for section navigation
+        // Ctrl-h/j/k/l for panel-level navigation (not section cycling)
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
                 KeyCode::Char('j') => {
-                    // Move focus down: request sections -> response
+                    // Move focus from request panel to response panel
                     if self.panel.panel_focus == PanelFocus::Request {
-                        if self.panel.focused_section == Section::Body {
-                            self.panel.focus_response();
-                        } else {
-                            self.panel.next_section();
-                        }
+                        self.panel.focus_response();
                     }
                     return Action::None;
                 }
                 KeyCode::Char('k') => {
-                    // Move focus up: response -> request sections
+                    // Move focus from response panel to request panel,
+                    // or from request panel to sidebar
                     if self.panel.panel_focus == PanelFocus::Response {
                         self.panel.focus_request();
-                    } else if self.panel.focused_section != Section::Url {
-                        self.panel.prev_section();
                     } else {
-                        // At URL, Ctrl-k could move to sidebar
                         self.sidebar_focused = true;
                     }
                     return Action::None;
