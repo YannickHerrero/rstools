@@ -210,6 +210,50 @@ These MUST be consistent across ALL tools:
 - Commands:
   - `:open <path>` — open a .kdbx file
 
+### Notes (`rstools-notes`)
+- Tables: `note_entries`, `note_contents`
+- Models:
+  - `NoteEntry`: id, parent_id, name, entry_type (folder/note), expanded, created_at, updated_at
+  - `NoteContent`: id, entry_id, body, created_at, updated_at
+- Tree structure: folders contain notes and sub-folders, like neo-tree
+- Layout: sidebar (40 chars, toggle with `<Space>ne`) + vim editor panel
+- Vim editor: full vim grammar with Normal/Insert/Visual/VisualLine modes, motions
+  (hjkl, w/b/e, 0/$, f/t/F/T, gg/G), operators (d/c/y with motions and text objects),
+  text objects (iw/aw/i"/a"/i(/a(/ip/ap), count prefixes, undo/redo (u/Ctrl-r),
+  register/clipboard (p/P), relative line numbers, visual selection highlighting
+- Persistence: explicit save with `:w` (dirty indicator `[+]` shown in title)
+- Auto-save when switching between notes
+- Plain text only (no markdown highlighting)
+- One note at a time (selecting a different note replaces current editor content)
+- Keybinds (Normal mode, sidebar focused):
+  - `j/k` — move up/down
+  - `h` — collapse folder / go to parent
+  - `l` — expand folder
+  - `Enter` — toggle folder / open note in editor
+  - `gg` / `G` — go to top / bottom
+  - `Ctrl-d` / `Ctrl-u` — half-page down / up
+  - `Ctrl-l` — move focus to editor panel
+  - `a` — add entry (supports paths like `folder/subfolder/note-name`)
+  - `r` — rename selected entry
+  - `d` — delete selected entry (with y/n confirmation)
+  - `y` — copy selected entry to clipboard
+  - `x` — cut selected entry to clipboard
+  - `p` — paste from clipboard (recursive for folders)
+- Keybinds (Normal mode, editor focused):
+  - Full vim grammar (motions, operators, text objects, visual mode)
+  - `i/a/A/I` — enter insert mode
+  - `o/O` — insert line below/above
+  - `v/V` — visual / visual-line mode
+  - `d/c/y` + motion — delete/change/yank with motion
+  - `dd/yy/cc` — line-wise operators
+  - `u` / `Ctrl-r` — undo / redo
+  - `p/P` — paste after/before
+  - `Ctrl-h` — move focus to sidebar
+  - `:w` — save note to database
+- Which-key (`<Space>n`):
+  - `e` — Toggle sidebar
+  - `s` — Save note
+
 ## Commit Conventions
 
 - **Commit after each significant step** when building a feature — do NOT wait

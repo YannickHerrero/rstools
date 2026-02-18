@@ -23,6 +23,7 @@ A vim-centric terminal toolkit built in Rust with [ratatui](https://ratatui.rs):
 | Todo | Fast task list with vim navigation, filtering, and CRUD |
 | HTTP | API client with folder/query explorer, request editor, response viewer |
 | KeePass | Read-only KDBX4 vault browser with PIN quick access and secure clipboard |
+| Notes | Plain text notes with tree sidebar and full vim-like editor |
 
 ## Screenshots
 
@@ -121,6 +122,7 @@ Detailed guides were moved to keep this README compact:
 - Todo: [Todo usage in docs](docs/usage.md#todo)
 - HTTP: [HTTP usage in docs](docs/usage.md#http)
 - KeePass: [KeePass usage in docs](docs/usage.md#keepass)
+- Notes: [Notes usage in docs](docs/usage.md#notes)
 
 </details>
 
