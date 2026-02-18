@@ -23,19 +23,22 @@ A vim-centric terminal toolkit built in Rust with [ratatui](https://ratatui.rs):
 | Todo | Fast task list with vim navigation, filtering, and CRUD |
 | HTTP | API client with folder/query explorer, request editor, response viewer |
 | KeePass | Read-only KDBX4 vault browser with PIN quick access and secure clipboard |
-| Notes | Plain text notes with tree sidebar and full vim-like editor |
+| Notes | Plain text notes with tree sidebar and vim modes (Normal/Insert/Visual) |
 
 ## Screenshots
 
 <p align="center">
   <a href="assets/screenshots/todo-demo.png">
-    <img src="assets/screenshots/todo-demo.png" alt="Todo Tool" width="32%" />
+    <img src="assets/screenshots/todo-demo.png" alt="Todo Tool" width="24%" />
   </a>
   <a href="assets/screenshots/http-demo.png">
-    <img src="assets/screenshots/http-demo.png" alt="HTTP Tool" width="32%" />
+    <img src="assets/screenshots/http-demo.png" alt="HTTP Tool" width="24%" />
   </a>
   <a href="assets/screenshots/keepass-demo.png">
-    <img src="assets/screenshots/keepass-demo.png" alt="KeePass Tool" width="32%" />
+    <img src="assets/screenshots/keepass-demo.png" alt="KeePass Tool" width="24%" />
+  </a>
+  <a href="assets/screenshots/notes-demo.png">
+    <img src="assets/screenshots/notes-demo.png" alt="Notes Tool" width="24%" />
   </a>
 </p>
 
@@ -45,6 +48,7 @@ A vim-centric terminal toolkit built in Rust with [ratatui](https://ratatui.rs):
 ![Todo Tool](assets/screenshots/todo-demo.png)
 ![HTTP Tool](assets/screenshots/http-demo.png)
 ![KeePass Tool](assets/screenshots/keepass-demo.png)
+![Notes Tool](assets/screenshots/notes-demo.png)
 
 </details>
 
