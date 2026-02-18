@@ -252,7 +252,9 @@ These MUST be consistent across ALL tools:
   - `:w` — save note to database
 - Which-key (`<Space>n`):
   - `e` — Toggle sidebar
-  - `s` — Save note
+  - `s` — Search/Save group
+  - `ss` — Save note
+  - `sg` — Grep note contents
 
 ## Commit Conventions
 

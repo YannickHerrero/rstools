@@ -1,9 +1,9 @@
 use crate::sidebar::{render_tree_sidebar, SidebarState, TreeSidebarRenderConfig};
 use ratatui::{
-    layout::Rect,
-    style::{Color, Style},
+    layout::{Constraint, Flex, Layout, Rect},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
     Frame,
 };
 use rstools_core::vim_editor::VimEditor;
@@ -125,4 +125,82 @@ fn render_empty_panel(frame: &mut Frame, area: Rect) {
         };
         frame.render_widget(text, centered);
     }
+}
+
+pub fn render_grep_overlay(
+    frame: &mut Frame,
+    area: Rect,
+    query: &str,
+    results: &[String],
+    selected: usize,
+    preview_title: &str,
+    preview_text: &str,
+) {
+    let popup_width = (area.width * 80 / 100)
+        .max(50)
+        .min(area.width.saturating_sub(4));
+    let popup_height = (area.height * 70 / 100)
+        .max(12)
+        .min(area.height.saturating_sub(4));
+
+    let vertical = Layout::vertical([Constraint::Length(popup_height)]).flex(Flex::Center);
+    let horizontal = Layout::horizontal([Constraint::Length(popup_width)]).flex(Flex::Center);
+    let [popup_area] = vertical.areas(area);
+    let [popup_area] = horizontal.areas(popup_area);
+
+    frame.render_widget(Clear, popup_area);
+
+    let [input_area, content_area] =
+        Layout::vertical([Constraint::Length(3), Constraint::Min(1)]).areas(popup_area);
+
+    let [results_area, preview_area] =
+        Layout::horizontal([Constraint::Percentage(45), Constraint::Percentage(55)])
+            .areas(content_area);
+
+    let input = Paragraph::new(Line::from(vec![
+        Span::styled("> ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw(query),
+    ]))
+    .block(
+        Block::default()
+            .title(" Grep Notes ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::White)),
+    );
+    frame.render_widget(input, input_area);
+
+    frame.set_cursor_position((input_area.x + 3 + query.len() as u16, input_area.y + 1));
+
+    let items: Vec<ListItem> = if results.is_empty() {
+        vec![ListItem::new(Line::from(Span::styled(
+            "No matches",
+            Style::default().fg(Color::DarkGray),
+        )))]
+    } else {
+        results
+            .iter()
+            .map(|r| ListItem::new(Line::from(Span::raw(r))))
+            .collect()
+    };
+
+    let mut list_state = ListState::default();
+    if !results.is_empty() {
+        list_state.select(Some(selected.min(results.len() - 1)));
+    }
+
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(" Results "))
+        .highlight_style(Style::default().add_modifier(Modifier::REVERSED | Modifier::BOLD))
+        .highlight_symbol("> ");
+
+    frame.render_stateful_widget(list, results_area, &mut list_state);
+
+    let preview = Paragraph::new(preview_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!(" Preview: {} ", preview_title)),
+        )
+        .wrap(ratatui::widgets::Wrap { trim: false });
+    frame.render_widget(preview, preview_area);
 }

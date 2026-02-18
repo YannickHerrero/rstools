@@ -17,6 +17,25 @@ use rusqlite::Connection;
 use model::EntryType;
 use sidebar::{ClipboardMode, NotesSidebarExt, SidebarInput, SidebarState, TreeNode};
 
+#[derive(Debug, Clone)]
+struct GrepCandidate {
+    entry_id: i64,
+    note_name: String,
+    note_path: String,
+    line_number: usize,
+    line_text: String,
+}
+
+#[derive(Debug, Clone)]
+struct GrepMatch {
+    entry_id: i64,
+    note_name: String,
+    note_path: String,
+    line_number: usize,
+    column: usize,
+    line_text: String,
+}
+
 pub struct NotesTool {
     sidebar: SidebarState,
     editor: VimEditor,
@@ -29,6 +48,18 @@ pub struct NotesTool {
     active_note_id: Option<i64>,
     /// The currently open note's display name.
     active_note_name: Option<String>,
+    /// Pending subleader group after <leader>s.
+    pending_s_group: bool,
+    /// Whether full-note grep overlay is active.
+    grep_active: bool,
+    /// Current grep query.
+    grep_query: String,
+    /// All searchable note lines.
+    grep_candidates: Vec<GrepCandidate>,
+    /// Filtered grep matches.
+    grep_matches: Vec<GrepMatch>,
+    /// Selected grep match index.
+    grep_selected: usize,
 }
 
 impl NotesTool {
@@ -45,6 +76,12 @@ impl NotesTool {
             sidebar_focused: true,
             active_note_id: None,
             active_note_name: None,
+            pending_s_group: false,
+            grep_active: false,
+            grep_query: String::new(),
+            grep_candidates: Vec::new(),
+            grep_matches: Vec::new(),
+            grep_selected: 0,
         })
     }
 
@@ -268,6 +305,159 @@ impl NotesTool {
             let _ = model::set_entry_expanded(&self.conn, parent_id, true);
             current_id = parent_id;
         }
+    }
+
+    // ── Full grep search ─────────────────────────────────────────────
+
+    fn open_grep(&mut self) {
+        self.pending_s_group = false;
+        self.grep_active = true;
+        self.grep_query.clear();
+        self.grep_selected = 0;
+        self.grep_candidates = self.collect_grep_candidates();
+        self.grep_matches.clear();
+    }
+
+    fn close_grep(&mut self) {
+        self.grep_active = false;
+        self.grep_query.clear();
+        self.grep_matches.clear();
+        self.grep_selected = 0;
+    }
+
+    fn collect_grep_candidates(&self) -> Vec<GrepCandidate> {
+        let Ok(entries) = model::list_entries(&self.conn) else {
+            return Vec::new();
+        };
+
+        use std::collections::HashMap;
+        let mut by_id: HashMap<i64, (Option<i64>, String, bool)> = HashMap::new();
+        for e in &entries {
+            by_id.insert(
+                e.id,
+                (
+                    e.parent_id,
+                    e.name.clone(),
+                    e.entry_type == model::EntryType::Folder,
+                ),
+            );
+        }
+
+        let mut out = Vec::new();
+        for e in entries {
+            if e.entry_type == model::EntryType::Folder {
+                continue;
+            }
+
+            let path = {
+                let mut parts = vec![e.name.clone()];
+                let mut cur = e.parent_id;
+                while let Some(pid) = cur {
+                    if let Some((ppid, name, _)) = by_id.get(&pid) {
+                        parts.push(name.clone());
+                        cur = *ppid;
+                    } else {
+                        break;
+                    }
+                }
+                parts.reverse();
+                parts.join("/")
+            };
+
+            let Ok(content) = model::get_note_content(&self.conn, e.id) else {
+                continue;
+            };
+
+            for (idx, line) in content.body.lines().enumerate() {
+                out.push(GrepCandidate {
+                    entry_id: e.id,
+                    note_name: e.name.clone(),
+                    note_path: path.clone(),
+                    line_number: idx + 1,
+                    line_text: line.to_string(),
+                });
+            }
+        }
+        out
+    }
+
+    fn filter_grep(&mut self) {
+        let q = self.grep_query.to_lowercase();
+        if q.is_empty() {
+            self.grep_matches.clear();
+            self.grep_selected = 0;
+            return;
+        }
+
+        self.grep_matches = self
+            .grep_candidates
+            .iter()
+            .filter_map(|c| {
+                let lower = c.line_text.to_lowercase();
+                let col = lower.find(&q)?;
+                Some(GrepMatch {
+                    entry_id: c.entry_id,
+                    note_name: c.note_name.clone(),
+                    note_path: c.note_path.clone(),
+                    line_number: c.line_number,
+                    column: col,
+                    line_text: c.line_text.clone(),
+                })
+            })
+            .collect();
+
+        if self.grep_matches.is_empty() {
+            self.grep_selected = 0;
+        } else if self.grep_selected >= self.grep_matches.len() {
+            self.grep_selected = self.grep_matches.len() - 1;
+        }
+    }
+
+    fn confirm_grep_selection(&mut self) {
+        let Some(m) = self.grep_matches.get(self.grep_selected).cloned() else {
+            return;
+        };
+
+        self.open_note(m.entry_id, &m.note_name);
+        if self.editor.buffer.line_count() > 0 {
+            let target_row = m.line_number.saturating_sub(1);
+            self.editor.buffer.cursor_row = target_row.min(self.editor.buffer.line_count() - 1);
+            let line_len = self.editor.buffer.current_line().len();
+            self.editor.buffer.cursor_col = m.column.min(line_len);
+            self.editor.buffer.desired_col = self.editor.buffer.cursor_col;
+        }
+        self.close_grep();
+    }
+
+    fn handle_grep_key(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Esc => self.close_grep(),
+            KeyCode::Enter => self.confirm_grep_selection(),
+            KeyCode::Down | KeyCode::Tab => {
+                if !self.grep_matches.is_empty() {
+                    self.grep_selected = (self.grep_selected + 1) % self.grep_matches.len();
+                }
+            }
+            KeyCode::Up | KeyCode::BackTab => {
+                if !self.grep_matches.is_empty() {
+                    self.grep_selected = if self.grep_selected == 0 {
+                        self.grep_matches.len() - 1
+                    } else {
+                        self.grep_selected - 1
+                    };
+                }
+            }
+            KeyCode::Char(c) => {
+                self.grep_query.push(c);
+                self.filter_grep();
+            }
+            KeyCode::Backspace => {
+                self.grep_query.pop();
+                self.filter_grep();
+            }
+            _ => {}
+        }
+        Action::None
     }
 
     // ── Key handling ─────────────────────────────────────────────────
@@ -575,7 +765,7 @@ impl Tool for NotesTool {
     fn which_key_entries(&self) -> Vec<WhichKeyEntry> {
         vec![
             WhichKeyEntry::action('e', "Toggle sidebar"),
-            WhichKeyEntry::action('s', "Save note"),
+            WhichKeyEntry::group('s', "Search/Save"),
         ]
     }
 
@@ -621,11 +811,31 @@ impl Tool for NotesTool {
             HelpEntry::with_section("Editor", ":w", "Save note to database"),
             // General
             HelpEntry::with_section("General", "<Space>e", "Toggle sidebar"),
-            HelpEntry::with_section("General", "<Space>s", "Save note"),
+            HelpEntry::with_section("General", "<Space>s s", "Save note"),
+            HelpEntry::with_section("General", "<Space>s g", "Grep note contents"),
         ]
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Action {
+        if self.pending_s_group {
+            self.pending_s_group = false;
+            return match key.code {
+                KeyCode::Char('s') => {
+                    self.save_current_note();
+                    Action::None
+                }
+                KeyCode::Char('g') => {
+                    self.open_grep();
+                    Action::None
+                }
+                _ => Action::None,
+            };
+        }
+
+        if self.grep_active {
+            return self.handle_grep_key(key);
+        }
+
         match self.mode {
             InputMode::Normal => {
                 if self.sidebar.visible && self.sidebar_focused {
@@ -699,6 +909,38 @@ impl Tool for NotesTool {
             self.sidebar_focused,
             self.active_note_name.as_deref(),
         );
+
+        if self.grep_active {
+            let rows: Vec<String> = self
+                .grep_matches
+                .iter()
+                .map(|m| format!("{}:{}  {}", m.note_path, m.line_number, m.line_text.trim()))
+                .collect();
+
+            let (preview_title, preview_text) =
+                if let Some(m) = self.grep_matches.get(self.grep_selected) {
+                    let title = m.note_path.clone();
+                    let body = model::get_note_content(&self.conn, m.entry_id)
+                        .map(|c| c.body)
+                        .unwrap_or_else(|_| "(unable to load note content)".to_string());
+                    (title, body)
+                } else {
+                    (
+                        "No selection".to_string(),
+                        "Type to grep note contents...".to_string(),
+                    )
+                };
+
+            ui::render_grep_overlay(
+                frame,
+                area,
+                &self.grep_query,
+                &rows,
+                self.grep_selected,
+                &preview_title,
+                &preview_text,
+            );
+        }
     }
 
     fn handle_leader_action(&mut self, key: char) -> Option<Action> {
@@ -711,7 +953,7 @@ impl Tool for NotesTool {
                 Some(Action::None)
             }
             's' => {
-                self.save_current_note();
+                self.pending_s_group = true;
                 Some(Action::None)
             }
             _ => None,
@@ -720,6 +962,7 @@ impl Tool for NotesTool {
 
     fn reset_key_state(&mut self) {
         self.key_state.reset();
+        self.pending_s_group = false;
     }
 
     fn handle_paste(&mut self, text: &str) -> Action {
@@ -865,5 +1108,53 @@ mod tests {
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
         assert!(labels.contains(&"note-a"));
         assert!(labels.contains(&"note-b"));
+    }
+
+    #[test]
+    fn test_leader_s_group_for_save_and_grep() {
+        let mut tool = setup_tool();
+
+        // first 's' enters subgroup and waits for second key
+        let action = tool.handle_leader_action('s');
+        assert!(matches!(action, Some(Action::None)));
+        assert!(tool.pending_s_group);
+
+        // second key 'g' opens grep overlay
+        let action = tool.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+        assert!(matches!(action, Action::None));
+        assert!(tool.grep_active);
+    }
+
+    #[test]
+    fn test_grep_finds_note_content() {
+        let mut tool = setup_tool();
+        tool.create_entries_from_path("work/note1");
+        tool.create_entries_from_path("note2");
+
+        let note1_id = tool
+            .sidebar
+            .flat_view
+            .iter()
+            .find(|e| e.name == "note1")
+            .unwrap()
+            .entry_id;
+        let note2_id = tool
+            .sidebar
+            .flat_view
+            .iter()
+            .find(|e| e.name == "note2")
+            .unwrap()
+            .entry_id;
+
+        model::save_note_content(&tool.conn, note1_id, "hello rust world\nsecond line").unwrap();
+        model::save_note_content(&tool.conn, note2_id, "another note").unwrap();
+
+        tool.open_grep();
+        tool.grep_query = "rust".to_string();
+        tool.filter_grep();
+
+        assert_eq!(tool.grep_matches.len(), 1);
+        assert_eq!(tool.grep_matches[0].entry_id, note1_id);
+        assert_eq!(tool.grep_matches[0].line_number, 1);
     }
 }
