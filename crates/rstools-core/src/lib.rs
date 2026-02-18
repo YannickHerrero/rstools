@@ -5,4 +5,5 @@ pub mod telescope;
 pub mod tool;
 pub mod tree_sidebar;
 pub mod ui;
+pub mod vim_editor;
 pub mod which_key;
