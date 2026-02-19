@@ -5,6 +5,7 @@ pub mod sidebar;
 pub mod ui;
 
 use std::collections::HashMap;
+use std::time::Instant;
 
 use rstools_core::help_popup::HelpEntry;
 use rstools_core::keybinds::{Action, InputMode, KeyState, process_normal_key};
@@ -39,6 +40,9 @@ pub struct HttpTool {
     sidebar_focused: bool,
     /// In-memory cache of the last response per query (keyed by entry_id).
     response_cache: HashMap<i64, CachedResponse>,
+    clipboard: Option<arboard::Clipboard>,
+    notification: Option<String>,
+    notification_shown_at: Option<Instant>,
 }
 
 impl HttpTool {
@@ -47,6 +51,7 @@ impl HttpTool {
         let mut sidebar = SidebarState::new();
         HttpSidebarExt::reload(&mut sidebar, &conn)?;
         let executor = HttpExecutor::spawn();
+        let clipboard = arboard::Clipboard::new().ok();
         Ok(Self {
             sidebar,
             panel: RequestPanel::new(),
@@ -56,7 +61,36 @@ impl HttpTool {
             executor,
             sidebar_focused: true,
             response_cache: HashMap::new(),
+            clipboard,
+            notification: None,
+            notification_shown_at: None,
         })
+    }
+
+    fn show_notification(&mut self, message: impl Into<String>) {
+        self.notification = Some(message.into());
+        self.notification_shown_at = Some(Instant::now());
+    }
+
+    fn copy_response_body_to_clipboard(&mut self) {
+        let Some(response) = self.panel.response.as_ref() else {
+            return;
+        };
+
+        if response.body.trim().is_empty() {
+            self.show_notification("Response body is empty");
+            return;
+        }
+
+        if let Some(ref mut clipboard) = self.clipboard {
+            if clipboard.set_text(response.body.clone()).is_ok() {
+                self.show_notification("Copied response body");
+            } else {
+                self.show_notification("Failed to copy response body");
+            }
+        } else {
+            self.show_notification("Clipboard unavailable");
+        }
     }
 
     /// Send the current request via the executor.
@@ -475,9 +509,7 @@ impl HttpTool {
         };
 
         for node in nodes {
-            if node.entry.is_folder()
-                && node.entry.name().eq_ignore_ascii_case(name)
-            {
+            if node.entry.is_folder() && node.entry.name().eq_ignore_ascii_case(name) {
                 return Some(node.entry.id());
             }
         }
@@ -871,6 +903,10 @@ impl HttpTool {
 
     fn handle_response_key(&mut self, key: KeyEvent) -> Action {
         match key.code {
+            KeyCode::Char('y') => {
+                self.copy_response_body_to_clipboard();
+                Action::None
+            }
             KeyCode::Char('j') => {
                 if let Some(ref mut resp) = self.panel.response {
                     match resp.focused_section {
@@ -1466,6 +1502,7 @@ impl Tool for HttpTool {
             HelpEntry::with_section("Response", "j / k", "Scroll response"),
             HelpEntry::with_section("Response", "gg / G", "Go to top / bottom"),
             HelpEntry::with_section("Response", "Tab", "Switch Body / Headers"),
+            HelpEntry::with_section("Response", "y", "Copy response body"),
             // General
             HelpEntry::with_section("General", "<Space>e", "Toggle explorer sidebar"),
         ]
@@ -1618,12 +1655,20 @@ impl Tool for HttpTool {
             &self.sidebar,
             &self.panel,
             self.sidebar_focused,
+            self.notification.as_deref(),
         );
     }
 
     fn tick(&mut self) {
         self.poll_response();
         self.panel.tick_spinner();
+
+        if let Some(shown_at) = self.notification_shown_at {
+            if shown_at.elapsed().as_secs() >= 2 {
+                self.notification = None;
+                self.notification_shown_at = None;
+            }
+        }
     }
 
     fn reset_key_state(&mut self) {
@@ -1635,7 +1680,9 @@ impl Tool for HttpTool {
             // If in insert mode on the body section, paste into the body
             if self.panel.focused_section == Section::Body {
                 self.panel.body_insert_text(text);
-            } else if let Some(Section::Params | Section::Headers) = Some(self.panel.focused_section) {
+            } else if let Some(Section::Params | Section::Headers) =
+                Some(self.panel.focused_section)
+            {
                 // For KV sections, insert into the active field (strip newlines)
                 for c in text.chars() {
                     if c != '\n' && c != '\r' {

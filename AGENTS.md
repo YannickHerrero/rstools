@@ -150,6 +150,7 @@ These MUST be consistent across ALL tools:
   - `j/k` — scroll response body/headers
   - `gg/G` — go to top/bottom
   - `Tab` — switch between Body and Headers tabs
+  - `y` — copy response body to clipboard
 - Which-key (`<Space>h`):
   - `s` — Send request
   - `e` — Toggle sidebar

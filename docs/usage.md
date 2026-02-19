@@ -125,6 +125,7 @@ Section-specific:
 | `gg` / `G` | Go top / bottom |
 | `Ctrl-d` / `Ctrl-u` | Half-page down / up |
 | `Tab` | Switch Body/Headers tab |
+| `y` | Copy response body to clipboard |
 
 ## KeePass
 

@@ -1,12 +1,12 @@
 use crate::model::HttpMethod;
 use crate::request_panel::{KvField, KvRow, PanelFocus, RequestPanel, ResponseSection, Section};
-use crate::sidebar::{render_tree_sidebar, SidebarState, TreeSidebarRenderConfig};
+use crate::sidebar::{SidebarState, TreeSidebarRenderConfig, render_tree_sidebar};
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
-    Frame,
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -46,6 +46,7 @@ pub fn render_http_tool(
     sidebar: &SidebarState,
     panel: &RequestPanel,
     sidebar_focused: bool,
+    notification: Option<&str>,
 ) {
     if sidebar.visible {
         let sidebar_width = SIDEBAR_WIDTH.min(area.width.saturating_sub(10));
@@ -66,6 +67,10 @@ pub fn render_http_tool(
         render_content_panel(frame, content_area, panel, !sidebar_focused);
     } else {
         render_content_panel(frame, area, panel, true);
+    }
+
+    if let Some(message) = notification {
+        render_notification(frame, area, message);
     }
 }
 
@@ -751,4 +756,24 @@ fn format_size(bytes: usize) -> String {
     } else {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     }
+}
+
+fn render_notification(frame: &mut Frame, area: Rect, message: &str) {
+    let width = (message.len() as u16 + 4).min(area.width.saturating_sub(4));
+    let notification_area = Rect {
+        x: area.x + area.width.saturating_sub(width) - 1,
+        y: area.y + 1,
+        width,
+        height: 1,
+    };
+
+    frame.render_widget(Clear, notification_area);
+    let paragraph = Paragraph::new(Line::from(Span::styled(
+        format!(" {} ", message),
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Green)
+            .add_modifier(Modifier::BOLD),
+    )));
+    frame.render_widget(paragraph, notification_area);
 }
