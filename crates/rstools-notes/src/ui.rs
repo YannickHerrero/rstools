@@ -1,10 +1,10 @@
-use crate::sidebar::{render_tree_sidebar, SidebarState, TreeSidebarRenderConfig};
+use crate::sidebar::{SidebarState, TreeSidebarRenderConfig, render_tree_sidebar};
 use ratatui::{
+    Frame,
     layout::{Constraint, Flex, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
-    Frame,
 };
 use rstools_core::vim_editor::VimEditor;
 

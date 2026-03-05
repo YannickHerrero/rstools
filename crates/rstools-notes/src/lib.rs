@@ -11,7 +11,7 @@ use rstools_core::vim_editor::{EditorAction, VimEditor, VimMode};
 use rstools_core::which_key::WhichKeyEntry;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::{layout::Rect, Frame};
+use ratatui::{Frame, layout::Rect};
 use rusqlite::Connection;
 
 use model::EntryType;
