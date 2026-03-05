@@ -17,7 +17,9 @@ use rstools_core::{
 };
 use rusqlite::Connection;
 
-use crate::conflict::{apply_hunk_choice, hunk_preview, parse_conflicts, HunkChoice};
+use crate::conflict::{
+    apply_hunk_choice, has_conflict_markers, hunk_preview, parse_conflicts, HunkChoice,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConflictKind {
@@ -45,6 +47,7 @@ pub struct MergeTool {
     drafts: HashMap<String, String>,
     current_hunk: usize,
     pending_c_action: bool,
+    notification: Option<String>,
 }
 
 impl MergeTool {
@@ -62,6 +65,7 @@ impl MergeTool {
             drafts: HashMap::new(),
             current_hunk: 0,
             pending_c_action: false,
+            notification: None,
         };
         tool.refresh_conflicts();
         Ok(tool)
@@ -220,6 +224,95 @@ impl MergeTool {
         }
         if let Some(path) = self.active_file.as_ref() {
             self.drafts.insert(path.clone(), self.editor.text());
+        }
+    }
+
+    fn show_notification(&mut self, message: impl Into<String>) {
+        self.notification = Some(message.into());
+    }
+
+    fn run_git(&self, args: &[&str]) -> bool {
+        let Some(repo_root) = self.repo_root.as_ref() else {
+            return false;
+        };
+
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(repo_root)
+            .output();
+        let Ok(output) = output else {
+            return false;
+        };
+
+        output.status.success()
+    }
+
+    fn write_active_file(&mut self) -> bool {
+        if self.active_kind != Some(ConflictKind::Text) {
+            return false;
+        }
+
+        let Some(repo_root) = self.repo_root.as_ref() else {
+            self.show_notification("Not inside a git repository");
+            return false;
+        };
+        let Some(active_path) = self.active_file.as_ref().cloned() else {
+            return false;
+        };
+
+        let text = self.editor.text();
+        if std::fs::write(repo_root.join(&active_path), text.as_bytes()).is_err() {
+            self.show_notification("Failed to write file");
+            return false;
+        }
+
+        self.drafts.insert(active_path.clone(), text.clone());
+
+        if !has_conflict_markers(&text) {
+            if self.run_git(&["add", "--", &active_path]) {
+                self.refresh_conflicts();
+                if self.active_file.as_deref() != Some(active_path.as_str()) {
+                    self.sidebar_focused = true;
+                    self.show_notification("Saved and staged resolved file");
+                } else {
+                    self.show_notification("Saved and staged");
+                }
+                return true;
+            }
+            self.show_notification("Saved, but failed to stage");
+            return false;
+        }
+
+        self.show_notification("Saved (still contains conflict markers)");
+        true
+    }
+
+    fn apply_binary_choice(&mut self, ours: bool) {
+        if self.active_kind != Some(ConflictKind::Binary) {
+            return;
+        }
+
+        let Some(path) = self.active_file.as_ref().cloned() else {
+            return;
+        };
+
+        let checkout_side = if ours { "--ours" } else { "--theirs" };
+        if !self.run_git(&["checkout", checkout_side, "--", &path]) {
+            self.show_notification("Failed to apply selected binary side");
+            return;
+        }
+
+        if self.run_git(&["add", "--", &path]) {
+            self.refresh_conflicts();
+            self.sidebar_focused = true;
+            self.pending_c_action = false;
+            if ours {
+                self.show_notification("Applied ours and staged binary file");
+            } else {
+                self.show_notification("Applied theirs and staged binary file");
+            }
+        } else {
+            self.show_notification("Applied side, but failed to stage binary file");
         }
     }
 
@@ -461,6 +554,69 @@ impl MergeTool {
             }
         }
     }
+
+    fn handle_binary_normal_key(&mut self, key: KeyEvent) -> Action {
+        if self.key_state.leader_active {
+            self.key_state.leader_active = false;
+            return match key.code {
+                KeyCode::Char(' ') => Action::ToolPicker,
+                KeyCode::Char('f') => Action::Telescope,
+                KeyCode::Char(c @ '1'..='9') => {
+                    let idx = (c as u8 - b'1') as usize;
+                    Action::SwitchTool(idx)
+                }
+                KeyCode::Char('q') => Action::Quit,
+                KeyCode::Char(c) => Action::LeaderSequence(c),
+                KeyCode::Esc => Action::None,
+                _ => Action::None,
+            };
+        }
+
+        if self.pending_c_action {
+            self.pending_c_action = false;
+            return match key.code {
+                KeyCode::Char('o') => {
+                    self.apply_binary_choice(true);
+                    Action::None
+                }
+                KeyCode::Char('t') => {
+                    self.apply_binary_choice(false);
+                    Action::None
+                }
+                _ => Action::None,
+            };
+        }
+
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            match key.code {
+                KeyCode::Char('h') => {
+                    self.sidebar_focused = true;
+                    return Action::None;
+                }
+                KeyCode::Char('j') | KeyCode::Char('k') | KeyCode::Char('l') => {
+                    return Action::None;
+                }
+                _ => {}
+            }
+        }
+
+        match key.code {
+            KeyCode::Char('c') if key.modifiers == KeyModifiers::NONE => {
+                self.pending_c_action = true;
+                Action::None
+            }
+            KeyCode::Char(' ') if key.modifiers == KeyModifiers::NONE => {
+                self.key_state.leader_active = true;
+                Action::LeaderKey
+            }
+            KeyCode::Char(':') if key.modifiers == KeyModifiers::NONE => {
+                Action::SetMode(InputMode::Command)
+            }
+            KeyCode::Char('?') if key.modifiers == KeyModifiers::NONE => Action::Help,
+            KeyCode::Char('q') if key.modifiers == KeyModifiers::NONE => Action::Quit,
+            _ => Action::None,
+        }
+    }
 }
 
 fn is_unmerged_status(status: &str) -> bool {
@@ -528,26 +684,17 @@ impl Tool for MergeTool {
                 "Apply ours / theirs / both to current hunk",
             ),
             HelpEntry::with_section("Merge Editor", "Ctrl-h", "Move focus to sidebar"),
+            HelpEntry::with_section("Merge", ":w", "Save file and stage if fully resolved"),
+            HelpEntry::with_section("Merge", ":wq", "Save and close current tool"),
             HelpEntry::with_section("Merge", "<Space>r", "Refresh conflicted files"),
         ]
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Action {
+        self.notification = None;
+
         if self.active_kind == Some(ConflictKind::Binary) && !self.sidebar_focused {
-            return match key.code {
-                KeyCode::Char(' ') => {
-                    self.key_state.leader_active = true;
-                    Action::LeaderKey
-                }
-                KeyCode::Char(':') => Action::SetMode(InputMode::Command),
-                KeyCode::Char('?') => Action::Help,
-                KeyCode::Char('q') => Action::Quit,
-                KeyCode::Char('h') if key.modifiers == KeyModifiers::CONTROL => {
-                    self.sidebar_focused = true;
-                    Action::None
-                }
-                _ => Action::None,
-            };
+            return self.handle_binary_normal_key(key);
         }
 
         match self.mode {
@@ -583,6 +730,7 @@ impl Tool for MergeTool {
             self.active_kind,
             &self.editor,
             hunk_info,
+            self.notification.as_deref(),
         );
     }
 
@@ -625,6 +773,13 @@ impl Tool for MergeTool {
                 self.mode = InputMode::Normal;
                 Action::None
             }
+        }
+    }
+
+    fn handle_command(&mut self, cmd: &str) -> bool {
+        match cmd.trim() {
+            "w" | "write" => self.write_active_file(),
+            _ => false,
         }
     }
 }

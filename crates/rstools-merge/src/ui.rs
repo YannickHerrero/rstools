@@ -21,6 +21,7 @@ pub fn render_merge_tool(
     active_kind: Option<ConflictKind>,
     editor: &VimEditor,
     hunk_info: Option<(usize, usize, Option<HunkPreview>)>,
+    notification: Option<&str>,
 ) {
     let sidebar_width = SIDEBAR_WIDTH.min(area.width.saturating_sub(10));
     let sidebar_area = Rect {
@@ -51,6 +52,10 @@ pub fn render_merge_tool(
             render_binary_content(frame, content_area, path, !sidebar_focused)
         }
         _ => render_empty_content(frame, content_area),
+    }
+
+    if let Some(message) = notification {
+        render_notification(frame, area, message);
     }
 }
 
@@ -270,4 +275,23 @@ fn render_hunk_pane(
     }
 
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+}
+
+fn render_notification(frame: &mut Frame, area: Rect, message: &str) {
+    let width = (message.len() as u16 + 4).min(area.width.saturating_sub(4));
+    let notification_area = Rect {
+        x: area.x + area.width.saturating_sub(width) - 1,
+        y: area.y + 1,
+        width,
+        height: 1,
+    };
+
+    let paragraph = Paragraph::new(Line::from(Span::styled(
+        format!(" {} ", message),
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Green)
+            .add_modifier(Modifier::BOLD),
+    )));
+    frame.render_widget(paragraph, notification_area);
 }
