@@ -6,6 +6,7 @@ members = [
     "crates/rstools-http",
     "crates/rstools-keepass",
     "crates/rstools-notes",
+    "crates/rstools-merge",
 ]
 resolver = "2"
 
@@ -40,3 +41,4 @@ rstools-todo = { path = "crates/rstools-todo" }
 rstools-http = { path = "crates/rstools-http" }
 rstools-keepass = { path = "crates/rstools-keepass" }
 rstools-notes = { path = "crates/rstools-notes" }
+rstools-merge = { path = "crates/rstools-merge" }

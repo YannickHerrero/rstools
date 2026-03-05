@@ -1,0 +1,14 @@
+[package]
+name = "rstools-merge"
+description = "Merge conflict resolver tool for rstools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+rstools-core.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+rusqlite.workspace = true
+anyhow.workspace = true

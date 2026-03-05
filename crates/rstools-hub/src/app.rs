@@ -3,7 +3,7 @@ use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
-use ratatui::{Frame, layout::Rect};
+use ratatui::{layout::Rect, Frame};
 use rusqlite::Connection;
 
 use rstools_core::{
@@ -244,6 +244,12 @@ impl App {
                     self.switch_to_tool(idx);
                 }
             }
+            'm' => {
+                // Switch to Merge tool
+                if let Some(idx) = self.tools.iter().position(|t| t.name() == "Merge") {
+                    self.switch_to_tool(idx);
+                }
+            }
             _ => {}
         }
     }
@@ -299,6 +305,12 @@ impl App {
                         'n' => {
                             // Switch to Notes tool
                             if let Some(idx) = self.tools.iter().position(|t| t.name() == "Notes") {
+                                self.switch_to_tool(idx);
+                            }
+                        }
+                        'm' => {
+                            // Switch to Merge tool
+                            if let Some(idx) = self.tools.iter().position(|t| t.name() == "Merge") {
                                 self.switch_to_tool(idx);
                             }
                         }

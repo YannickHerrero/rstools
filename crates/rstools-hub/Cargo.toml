@@ -16,6 +16,7 @@ rstools-todo.workspace = true
 rstools-http.workspace = true
 rstools-keepass.workspace = true
 rstools-notes.workspace = true
+rstools-merge.workspace = true
 ratatui.workspace = true
 crossterm.workspace = true
 anyhow.workspace = true

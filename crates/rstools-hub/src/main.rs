@@ -12,13 +12,14 @@ use crossterm::{
         self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
     },
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::{Terminal, backend::CrosstermBackend};
+use ratatui::{backend::CrosstermBackend, Terminal};
 
 use rstools_core::db;
 use rstools_http::HttpTool;
 use rstools_keepass::KeePassTool;
+use rstools_merge::MergeTool;
 use rstools_notes::NotesTool;
 use rstools_todo::TodoTool;
 
@@ -69,12 +70,20 @@ fn main() -> Result<()> {
     };
     let notes = NotesTool::new(notes_conn)?;
 
+    let merge_conn = if demo_mode {
+        db::open_db_at(&demo_db_path()?)?
+    } else {
+        db::open_db()?
+    };
+    let merge = MergeTool::new(merge_conn)?;
+
     // Build the app
     let mut app = App::new(vec![
         Box::new(todo),
         Box::new(http),
         Box::new(keepass),
         Box::new(notes),
+        Box::new(merge),
     ]);
     app.init_db(&conn)?;
 

@@ -1,9 +1,9 @@
 use ratatui::{
-    Frame,
     layout::{Alignment, Constraint, Flex, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
+    Frame,
 };
 
 /// A single entry in the which-key menu.
@@ -125,6 +125,7 @@ pub fn hub_leader_entries() -> Vec<WhichKeyEntry> {
         WhichKeyEntry::group("f", "Find"),
         WhichKeyEntry::action("h", "HTTP"),
         WhichKeyEntry::group("k", "KeePass"),
+        WhichKeyEntry::action("m", "Merge"),
         WhichKeyEntry::action("n", "Notes"),
         WhichKeyEntry::action("t", "Todo"),
         WhichKeyEntry::action("q", "Quit"),

@@ -2231,6 +2231,7 @@ dependencies = [
  "rstools-core",
  "rstools-http",
  "rstools-keepass",
+ "rstools-merge",
  "rstools-notes",
  "rstools-todo",
  "rusqlite",
@@ -2253,6 +2254,17 @@ dependencies = [
  "rusqlite",
  "unicode-width",
  "zeroize",
+]
+
+[[package]]
+name = "rstools-merge"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crossterm",
+ "ratatui",
+ "rstools-core",
+ "rusqlite",
 ]
 
 [[package]]
