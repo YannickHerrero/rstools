@@ -23,6 +23,7 @@ pub fn render_merge_tool(
     editor: &VimEditor,
     hunk_info: Option<(usize, usize, Option<HunkPreview>)>,
     notification: Option<&str>,
+    preview_scroll: u16,
 ) {
     let sidebar_width = SIDEBAR_WIDTH.min(area.width.saturating_sub(10));
     let sidebar_area = Rect {
@@ -55,6 +56,7 @@ pub fn render_merge_tool(
             editor,
             hunk_info,
             !sidebar_focused,
+            preview_scroll,
         ),
         (Some(path), Some(ConflictKind::Binary)) => {
             render_binary_content(frame, content_area, path, !sidebar_focused)
@@ -206,6 +208,7 @@ fn render_text_conflict_content(
     editor: &VimEditor,
     hunk_info: Option<(usize, usize, Option<HunkPreview>)>,
     focused: bool,
+    preview_scroll: u16,
 ) {
     let [top_area, bottom_area] =
         Layout::vertical([Constraint::Percentage(40), Constraint::Percentage(60)]).areas(area);
@@ -225,8 +228,24 @@ fn render_text_conflict_content(
         .unwrap_or_else(|| "Hunk 0/0".to_string());
 
     let preview = hunk_info.as_ref().and_then(|(_, _, p)| p.as_ref());
-    render_hunk_pane(frame, left_top, " OURS ", preview, true, &hunk_title);
-    render_hunk_pane(frame, right_top, " THEIRS ", preview, false, &hunk_title);
+    render_hunk_pane(
+        frame,
+        left_top,
+        " OURS ",
+        preview,
+        true,
+        &hunk_title,
+        preview_scroll,
+    );
+    render_hunk_pane(
+        frame,
+        right_top,
+        " THEIRS ",
+        preview,
+        false,
+        &hunk_title,
+        preview_scroll,
+    );
 
     let border_color = if focused {
         Color::Blue
@@ -249,6 +268,7 @@ fn render_hunk_pane(
     preview: Option<&HunkPreview>,
     ours: bool,
     hunk_title: &str,
+    scroll: u16,
 ) {
     let block = Block::default()
         .borders(Borders::ALL)
@@ -297,7 +317,12 @@ fn render_hunk_pane(
         )));
     }
 
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((scroll, 0)),
+        inner,
+    );
 }
 
 fn render_notification(frame: &mut Frame, area: Rect, message: &str) {

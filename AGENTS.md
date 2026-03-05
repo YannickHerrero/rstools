@@ -263,7 +263,9 @@ These MUST be consistent across ALL tools:
 - Sidebar: conflicted files from unmerged index entries (`DD`, `AU`, `UD`, `UA`, `DU`, `AA`, `UU`)
 - Layout: sidebar (40 chars) + 3-pane conflict view (OURS/THEIRS top, editable RESULT bottom)
 - Text conflict workflow:
-  - `Ctrl-d` / `Ctrl-u` — next / previous conflict hunk
+  - `j` / `k` — next / previous conflict hunk
+  - `Ctrl-d` / `Ctrl-u` — scroll conflict preview
+  - Mouse wheel — scroll conflict preview
   - `co` / `ct` / `cb` — choose ours / theirs / both (ours then theirs)
   - `:w` — save file; auto-stage with `git add` when no conflict markers remain
   - `:wq` — save and close tool
@@ -277,7 +279,8 @@ These MUST be consistent across ALL tools:
   - `Ctrl-l` — focus content panel
 - Keybinds (Normal mode, content focused):
   - `Ctrl-h` — focus sidebar
-  - `Ctrl-d` / `Ctrl-u` — navigate hunks (text conflicts)
+  - `j` / `k` — navigate hunks (text conflicts)
+  - `Ctrl-d` / `Ctrl-u` — scroll conflict preview
 - Which-key (`<Space>m`):
   - `r` — Refresh conflicted files
 

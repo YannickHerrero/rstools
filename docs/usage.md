@@ -192,7 +192,9 @@ Section-specific:
 
 | Key | Action |
 |-----|--------|
-| `Ctrl-d` / `Ctrl-u` | Next / previous conflict hunk |
+| `j` / `k` | Next / previous conflict hunk |
+| `Ctrl-d` / `Ctrl-u` | Scroll conflict preview |
+| Mouse wheel | Scroll conflict preview |
 | `co` / `ct` / `cb` | Apply ours / theirs / both (ours then theirs) |
 | `Ctrl-h` | Focus sidebar |
 | `:w` | Save file and auto-stage if markers are gone |

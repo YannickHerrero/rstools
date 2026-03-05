@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{layout::Rect, widgets::ListState, Frame};
 use rstools_core::{
     help_popup::HelpEntry,
@@ -46,6 +46,7 @@ pub struct MergeTool {
     editor: VimEditor,
     drafts: HashMap<String, String>,
     current_hunk: usize,
+    preview_scroll: u16,
     pending_c_action: bool,
     notification: Option<String>,
 }
@@ -64,6 +65,7 @@ impl MergeTool {
             editor: VimEditor::new(),
             drafts: HashMap::new(),
             current_hunk: 0,
+            preview_scroll: 0,
             pending_c_action: false,
             notification: None,
         };
@@ -195,6 +197,7 @@ impl MergeTool {
                     self.editor.set_text(&text);
                     self.editor.mark_clean();
                     self.current_hunk = 0;
+                    self.preview_scroll = 0;
                     self.sync_hunk_state();
                     self.mode = InputMode::Normal;
                 }
@@ -202,6 +205,7 @@ impl MergeTool {
             ConflictKind::Binary => {
                 self.editor.set_text("");
                 self.current_hunk = 0;
+                self.preview_scroll = 0;
                 self.mode = InputMode::Normal;
             }
         }
@@ -341,6 +345,7 @@ impl MergeTool {
             return;
         }
         self.current_hunk = (self.current_hunk + 1).min(parsed.hunks.len() - 1);
+        self.preview_scroll = 0;
         self.sync_hunk_state();
     }
 
@@ -350,6 +355,7 @@ impl MergeTool {
             return;
         }
         self.current_hunk = self.current_hunk.saturating_sub(1);
+        self.preview_scroll = 0;
         self.sync_hunk_state();
     }
 
@@ -362,7 +368,16 @@ impl MergeTool {
         self.editor.set_text(&next);
         self.editor.mark_clean();
         self.save_current_draft();
+        self.preview_scroll = 0;
         self.sync_hunk_state();
+    }
+
+    fn scroll_preview_down(&mut self, lines: u16) {
+        self.preview_scroll = self.preview_scroll.saturating_add(lines);
+    }
+
+    fn scroll_preview_up(&mut self, lines: u16) {
+        self.preview_scroll = self.preview_scroll.saturating_sub(lines);
     }
 
     fn handle_sidebar_normal_key(&mut self, key: KeyEvent) -> Action {
@@ -491,11 +506,11 @@ impl MergeTool {
                     return Action::None;
                 }
                 KeyCode::Char('d') => {
-                    self.move_next_hunk();
+                    self.scroll_preview_down(8);
                     return Action::None;
                 }
                 KeyCode::Char('u') => {
-                    self.move_prev_hunk();
+                    self.scroll_preview_up(8);
                     return Action::None;
                 }
                 KeyCode::Char('j') | KeyCode::Char('k') | KeyCode::Char('l') => {
@@ -506,6 +521,14 @@ impl MergeTool {
         }
 
         match key.code {
+            KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
+                self.move_next_hunk();
+                return Action::None;
+            }
+            KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
+                self.move_prev_hunk();
+                return Action::None;
+            }
             KeyCode::Char('c') if key.modifiers == KeyModifiers::NONE => {
                 self.pending_c_action = true;
                 return Action::None;
@@ -673,11 +696,8 @@ impl Tool for MergeTool {
         vec![
             HelpEntry::with_section("Merge Sidebar", "j / k", "Navigate conflicted files"),
             HelpEntry::with_section("Merge Sidebar", "Enter", "Open selected conflicted file"),
-            HelpEntry::with_section(
-                "Merge Editor",
-                "Ctrl-d / Ctrl-u",
-                "Next / previous conflict hunk",
-            ),
+            HelpEntry::with_section("Merge Editor", "j / k", "Next / previous conflict hunk"),
+            HelpEntry::with_section("Merge Editor", "Ctrl-d / Ctrl-u", "Scroll conflict preview"),
             HelpEntry::with_section(
                 "Merge Editor",
                 "co / ct / cb",
@@ -734,6 +754,7 @@ impl Tool for MergeTool {
             &self.editor,
             hunk_info,
             self.notification.as_deref(),
+            self.preview_scroll,
         );
     }
 
@@ -776,6 +797,46 @@ impl Tool for MergeTool {
                 self.mode = InputMode::Normal;
                 Action::None
             }
+        }
+    }
+
+    fn handle_mouse(&mut self, mouse: MouseEvent, area: Rect) -> Action {
+        let sidebar_width = ui::SIDEBAR_WIDTH.min(area.width.saturating_sub(10));
+        let in_sidebar = mouse.column < area.x + sidebar_width;
+
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                if in_sidebar {
+                    self.sidebar_focused = true;
+                } else {
+                    self.sidebar_focused = false;
+                }
+                Action::None
+            }
+            MouseEventKind::ScrollDown => {
+                if in_sidebar {
+                    if !self.files.is_empty() {
+                        let cur = self.list_state.selected().unwrap_or(0);
+                        let next = (cur + 1).min(self.files.len().saturating_sub(1));
+                        self.list_state.select(Some(next));
+                    }
+                } else if self.active_kind == Some(ConflictKind::Text) {
+                    self.scroll_preview_down(3);
+                }
+                Action::None
+            }
+            MouseEventKind::ScrollUp => {
+                if in_sidebar {
+                    if !self.files.is_empty() {
+                        let cur = self.list_state.selected().unwrap_or(0);
+                        self.list_state.select(Some(cur.saturating_sub(1)));
+                    }
+                } else if self.active_kind == Some(ConflictKind::Text) {
+                    self.scroll_preview_up(3);
+                }
+                Action::None
+            }
+            _ => Action::None,
         }
     }
 
