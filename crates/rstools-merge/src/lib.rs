@@ -1,19 +1,23 @@
 pub mod conflict;
 pub mod ui;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{layout::Rect, widgets::ListState, Frame};
 use rstools_core::{
     help_popup::HelpEntry,
     keybinds::{process_normal_key, Action, InputMode, KeyState},
     telescope::TelescopeItem,
     tool::Tool,
+    vim_editor::{EditorAction, VimEditor, VimMode},
     which_key::WhichKeyEntry,
 };
 use rusqlite::Connection;
+
+use crate::conflict::{apply_hunk_choice, hunk_preview, parse_conflicts, HunkChoice};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConflictKind {
@@ -36,6 +40,11 @@ pub struct MergeTool {
     list_state: ListState,
     sidebar_focused: bool,
     active_file: Option<String>,
+    active_kind: Option<ConflictKind>,
+    editor: VimEditor,
+    drafts: HashMap<String, String>,
+    current_hunk: usize,
+    pending_c_action: bool,
 }
 
 impl MergeTool {
@@ -48,6 +57,11 @@ impl MergeTool {
             list_state: ListState::default(),
             sidebar_focused: true,
             active_file: None,
+            active_kind: None,
+            editor: VimEditor::new(),
+            drafts: HashMap::new(),
+            current_hunk: 0,
+            pending_c_action: false,
         };
         tool.refresh_conflicts();
         Ok(tool)
@@ -67,6 +81,7 @@ impl MergeTool {
         if self.files.is_empty() {
             self.list_state.select(None);
             self.active_file = None;
+            self.active_kind = None;
             return;
         }
 
@@ -74,8 +89,13 @@ impl MergeTool {
         let clamped = selected.min(self.files.len().saturating_sub(1));
         self.list_state.select(Some(clamped));
 
-        if self.active_file.is_none() {
-            self.active_file = self.files.get(clamped).map(|f| f.path.clone());
+        if let Some(active_path) = self.active_file.as_ref() {
+            if let Some(file) = self.files.iter().find(|f| &f.path == active_path) {
+                self.active_kind = Some(file.kind);
+                return;
+            }
+            self.active_file = None;
+            self.active_kind = None;
         }
     }
 
@@ -154,10 +174,291 @@ impl MergeTool {
         self.selected_index().and_then(|idx| self.files.get(idx))
     }
 
-    fn select_active_from_sidebar(&mut self) {
-        if let Some(file) = self.selected_file() {
-            self.active_file = Some(file.path.clone());
-            self.sidebar_focused = false;
+    fn open_selected_file(&mut self) {
+        let Some(selected) = self.selected_file().cloned() else {
+            return;
+        };
+
+        self.save_current_draft();
+        self.active_file = Some(selected.path.clone());
+        self.active_kind = Some(selected.kind);
+        self.sidebar_focused = false;
+        self.pending_c_action = false;
+
+        match selected.kind {
+            ConflictKind::Text => {
+                if let Some(text) = self.read_active_text() {
+                    self.editor.set_text(&text);
+                    self.editor.mark_clean();
+                    self.current_hunk = 0;
+                    self.sync_hunk_state();
+                    self.mode = InputMode::Normal;
+                }
+            }
+            ConflictKind::Binary => {
+                self.editor.set_text("");
+                self.current_hunk = 0;
+                self.mode = InputMode::Normal;
+            }
+        }
+    }
+
+    fn read_active_text(&self) -> Option<String> {
+        let repo_root = self.repo_root.as_ref()?;
+        let active = self.active_file.as_ref()?;
+
+        if let Some(draft) = self.drafts.get(active) {
+            return Some(draft.clone());
+        }
+
+        std::fs::read_to_string(repo_root.join(active)).ok()
+    }
+
+    fn save_current_draft(&mut self) {
+        if self.active_kind != Some(ConflictKind::Text) {
+            return;
+        }
+        if let Some(path) = self.active_file.as_ref() {
+            self.drafts.insert(path.clone(), self.editor.text());
+        }
+    }
+
+    fn sync_hunk_state(&mut self) {
+        let parsed = parse_conflicts(&self.editor.text());
+        if parsed.hunks.is_empty() {
+            self.current_hunk = 0;
+            return;
+        }
+
+        if self.current_hunk >= parsed.hunks.len() {
+            self.current_hunk = parsed.hunks.len() - 1;
+        }
+
+        if let Some(hunk) = parsed.hunks.get(self.current_hunk) {
+            let max_row = self.editor.buffer.line_count().saturating_sub(1);
+            self.editor.buffer.cursor_row = hunk.start_line.min(max_row);
+            self.editor.buffer.cursor_col = 0;
+            self.editor.buffer.desired_col = 0;
+        }
+    }
+
+    fn move_next_hunk(&mut self) {
+        let parsed = parse_conflicts(&self.editor.text());
+        if parsed.hunks.is_empty() {
+            return;
+        }
+        self.current_hunk = (self.current_hunk + 1).min(parsed.hunks.len() - 1);
+        self.sync_hunk_state();
+    }
+
+    fn move_prev_hunk(&mut self) {
+        let parsed = parse_conflicts(&self.editor.text());
+        if parsed.hunks.is_empty() {
+            return;
+        }
+        self.current_hunk = self.current_hunk.saturating_sub(1);
+        self.sync_hunk_state();
+    }
+
+    fn apply_current_hunk_choice(&mut self, choice: HunkChoice) {
+        let current = self.editor.text();
+        let Some(next) = apply_hunk_choice(&current, self.current_hunk, choice) else {
+            return;
+        };
+
+        self.editor.set_text(&next);
+        self.editor.mark_clean();
+        self.save_current_draft();
+        self.sync_hunk_state();
+    }
+
+    fn handle_sidebar_normal_key(&mut self, key: KeyEvent) -> Action {
+        if key.modifiers == KeyModifiers::CONTROL {
+            match key.code {
+                KeyCode::Char('l') => {
+                    if self.active_kind == Some(ConflictKind::Text) {
+                        self.sidebar_focused = false;
+                    }
+                    return Action::None;
+                }
+                KeyCode::Char('h') | KeyCode::Char('j') | KeyCode::Char('k') => {
+                    return Action::None;
+                }
+                _ => {}
+            }
+        }
+
+        let action = process_normal_key(key, &mut self.key_state);
+        match action {
+            Action::MoveDown(step) => {
+                if !self.files.is_empty() {
+                    let cur = self.list_state.selected().unwrap_or(0);
+                    let next = (cur + step).min(self.files.len().saturating_sub(1));
+                    self.list_state.select(Some(next));
+                }
+                Action::None
+            }
+            Action::MoveUp(step) => {
+                if !self.files.is_empty() {
+                    let cur = self.list_state.selected().unwrap_or(0);
+                    self.list_state.select(Some(cur.saturating_sub(step)));
+                }
+                Action::None
+            }
+            Action::GotoTop => {
+                if !self.files.is_empty() {
+                    self.list_state.select(Some(0));
+                }
+                Action::None
+            }
+            Action::GotoBottom => {
+                if !self.files.is_empty() {
+                    self.list_state
+                        .select(Some(self.files.len().saturating_sub(1)));
+                }
+                Action::None
+            }
+            Action::HalfPageDown => {
+                if !self.files.is_empty() {
+                    let cur = self.list_state.selected().unwrap_or(0);
+                    let next = (cur + 10).min(self.files.len().saturating_sub(1));
+                    self.list_state.select(Some(next));
+                }
+                Action::None
+            }
+            Action::HalfPageUp => {
+                if !self.files.is_empty() {
+                    let cur = self.list_state.selected().unwrap_or(0);
+                    self.list_state.select(Some(cur.saturating_sub(10)));
+                }
+                Action::None
+            }
+            Action::Confirm => {
+                self.open_selected_file();
+                Action::None
+            }
+            Action::LeaderSequence('r') => {
+                self.refresh_conflicts();
+                Action::None
+            }
+            Action::Quit
+            | Action::LeaderKey
+            | Action::LeaderSequence(_)
+            | Action::SwitchTool(_)
+            | Action::NextTool
+            | Action::PrevTool
+            | Action::ToolPicker
+            | Action::Telescope
+            | Action::Help
+            | Action::SetMode(_) => action,
+            _ => Action::None,
+        }
+    }
+
+    fn handle_editor_normal_key(&mut self, key: KeyEvent) -> Action {
+        if self.key_state.leader_active {
+            self.key_state.leader_active = false;
+            return match key.code {
+                KeyCode::Char(' ') => Action::ToolPicker,
+                KeyCode::Char('f') => Action::Telescope,
+                KeyCode::Char(c @ '1'..='9') => {
+                    let idx = (c as u8 - b'1') as usize;
+                    Action::SwitchTool(idx)
+                }
+                KeyCode::Char('q') => Action::Quit,
+                KeyCode::Char(c) => Action::LeaderSequence(c),
+                KeyCode::Esc => Action::None,
+                _ => Action::None,
+            };
+        }
+
+        if self.pending_c_action {
+            self.pending_c_action = false;
+            return match key.code {
+                KeyCode::Char('o') => {
+                    self.apply_current_hunk_choice(HunkChoice::Ours);
+                    Action::None
+                }
+                KeyCode::Char('t') => {
+                    self.apply_current_hunk_choice(HunkChoice::Theirs);
+                    Action::None
+                }
+                KeyCode::Char('b') => {
+                    self.apply_current_hunk_choice(HunkChoice::Both);
+                    Action::None
+                }
+                _ => Action::None,
+            };
+        }
+
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            match key.code {
+                KeyCode::Char('h') => {
+                    self.sidebar_focused = true;
+                    return Action::None;
+                }
+                KeyCode::Char('d') => {
+                    self.move_next_hunk();
+                    return Action::None;
+                }
+                KeyCode::Char('u') => {
+                    self.move_prev_hunk();
+                    return Action::None;
+                }
+                KeyCode::Char('j') | KeyCode::Char('k') | KeyCode::Char('l') => {
+                    return Action::None;
+                }
+                _ => {}
+            }
+        }
+
+        match key.code {
+            KeyCode::Char('c') if key.modifiers == KeyModifiers::NONE => {
+                self.pending_c_action = true;
+                return Action::None;
+            }
+            KeyCode::Char(' ') if key.modifiers == KeyModifiers::NONE => {
+                self.key_state.leader_active = true;
+                return Action::LeaderKey;
+            }
+            KeyCode::Char(':') if key.modifiers == KeyModifiers::NONE => {
+                return Action::SetMode(InputMode::Command);
+            }
+            KeyCode::Char('?') if key.modifiers == KeyModifiers::NONE => {
+                return Action::Help;
+            }
+            _ => {}
+        }
+
+        match self.editor.handle_key(key) {
+            EditorAction::ModeChanged(VimMode::Insert) => {
+                self.mode = InputMode::Insert;
+                self.save_current_draft();
+                self.sync_hunk_state();
+                Action::SetMode(InputMode::Insert)
+            }
+            EditorAction::EnterCommandMode => Action::SetMode(InputMode::Command),
+            _ => {
+                self.save_current_draft();
+                self.sync_hunk_state();
+                Action::None
+            }
+        }
+    }
+
+    fn handle_editor_insert_key(&mut self, key: KeyEvent) -> Action {
+        match self.editor.handle_key(key) {
+            EditorAction::ModeChanged(VimMode::Normal) => {
+                self.mode = InputMode::Normal;
+                self.save_current_draft();
+                self.sync_hunk_state();
+                Action::SetMode(InputMode::Normal)
+            }
+            _ => {
+                self.save_current_draft();
+                self.sync_hunk_state();
+                Action::None
+            }
         }
     }
 }
@@ -205,8 +506,7 @@ impl Tool for MergeTool {
 
         if let Some(idx) = self.files.iter().position(|f| f.path == path) {
             self.list_state.select(Some(idx));
-            self.active_file = Some(path.to_string());
-            self.sidebar_focused = false;
+            self.open_selected_file();
             return true;
         }
 
@@ -215,81 +515,64 @@ impl Tool for MergeTool {
 
     fn help_entries(&self) -> Vec<HelpEntry> {
         vec![
-            HelpEntry::with_section("Merge", "j / k", "Navigate conflicted files"),
-            HelpEntry::with_section("Merge", "Enter", "Open selected conflicted file"),
+            HelpEntry::with_section("Merge Sidebar", "j / k", "Navigate conflicted files"),
+            HelpEntry::with_section("Merge Sidebar", "Enter", "Open selected conflicted file"),
+            HelpEntry::with_section(
+                "Merge Editor",
+                "Ctrl-d / Ctrl-u",
+                "Next / previous conflict hunk",
+            ),
+            HelpEntry::with_section(
+                "Merge Editor",
+                "co / ct / cb",
+                "Apply ours / theirs / both to current hunk",
+            ),
+            HelpEntry::with_section("Merge Editor", "Ctrl-h", "Move focus to sidebar"),
             HelpEntry::with_section("Merge", "<Space>r", "Refresh conflicted files"),
         ]
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Action {
-        let action = process_normal_key(key, &mut self.key_state);
-        match action {
-            Action::MoveDown(step) => {
-                if !self.files.is_empty() {
-                    let cur = self.list_state.selected().unwrap_or(0);
-                    let next = (cur + step).min(self.files.len().saturating_sub(1));
-                    self.list_state.select(Some(next));
+        if self.active_kind == Some(ConflictKind::Binary) && !self.sidebar_focused {
+            return match key.code {
+                KeyCode::Char(' ') => {
+                    self.key_state.leader_active = true;
+                    Action::LeaderKey
                 }
-                Action::None
-            }
-            Action::MoveUp(step) => {
-                if !self.files.is_empty() {
-                    let cur = self.list_state.selected().unwrap_or(0);
-                    self.list_state.select(Some(cur.saturating_sub(step)));
+                KeyCode::Char(':') => Action::SetMode(InputMode::Command),
+                KeyCode::Char('?') => Action::Help,
+                KeyCode::Char('q') => Action::Quit,
+                KeyCode::Char('h') if key.modifiers == KeyModifiers::CONTROL => {
+                    self.sidebar_focused = true;
+                    Action::None
                 }
-                Action::None
-            }
-            Action::GotoTop => {
-                if !self.files.is_empty() {
-                    self.list_state.select(Some(0));
+                _ => Action::None,
+            };
+        }
+
+        match self.mode {
+            InputMode::Insert => self.handle_editor_insert_key(key),
+            InputMode::Normal => {
+                if self.sidebar_focused {
+                    self.handle_sidebar_normal_key(key)
+                } else {
+                    self.handle_editor_normal_key(key)
                 }
-                Action::None
             }
-            Action::GotoBottom => {
-                if !self.files.is_empty() {
-                    self.list_state
-                        .select(Some(self.files.len().saturating_sub(1)));
-                }
-                Action::None
-            }
-            Action::HalfPageDown => {
-                if !self.files.is_empty() {
-                    let cur = self.list_state.selected().unwrap_or(0);
-                    let next = (cur + 10).min(self.files.len().saturating_sub(1));
-                    self.list_state.select(Some(next));
-                }
-                Action::None
-            }
-            Action::HalfPageUp => {
-                if !self.files.is_empty() {
-                    let cur = self.list_state.selected().unwrap_or(0);
-                    self.list_state.select(Some(cur.saturating_sub(10)));
-                }
-                Action::None
-            }
-            Action::Confirm => {
-                self.select_active_from_sidebar();
-                Action::None
-            }
-            Action::LeaderSequence('r') => {
-                self.refresh_conflicts();
-                Action::None
-            }
-            Action::Quit
-            | Action::LeaderKey
-            | Action::LeaderSequence(_)
-            | Action::SwitchTool(_)
-            | Action::NextTool
-            | Action::PrevTool
-            | Action::ToolPicker
-            | Action::Telescope
-            | Action::Help
-            | Action::SetMode(_) => action,
-            _ => Action::None,
+            InputMode::Command => Action::None,
         }
     }
 
     fn render(&self, frame: &mut Frame, area: Rect) {
+        let hunk_info = if self.active_kind == Some(ConflictKind::Text) {
+            let text = self.editor.text();
+            let parsed = parse_conflicts(&text);
+            let preview = hunk_preview(&text, self.current_hunk, 3);
+            Some((self.current_hunk, parsed.hunks.len(), preview))
+        } else {
+            None
+        };
+
         ui::render_merge_tool(
             frame,
             area,
@@ -297,6 +580,9 @@ impl Tool for MergeTool {
             self.list_state.selected(),
             self.sidebar_focused,
             self.active_file.as_deref(),
+            self.active_kind,
+            &self.editor,
+            hunk_info,
         );
     }
 
@@ -312,9 +598,33 @@ impl Tool for MergeTool {
 
     fn reset_key_state(&mut self) {
         self.key_state.reset();
+        self.pending_c_action = false;
     }
 
     fn on_focus(&mut self) {
         self.refresh_conflicts();
+    }
+
+    fn on_blur(&mut self) {
+        self.save_current_draft();
+    }
+
+    fn handle_paste(&mut self, text: &str) -> Action {
+        if self.active_kind != Some(ConflictKind::Text) || self.sidebar_focused {
+            return Action::None;
+        }
+        self.editor.paste_text(text);
+        self.save_current_draft();
+        self.sync_hunk_state();
+        match self.editor.mode {
+            VimMode::Insert => {
+                self.mode = InputMode::Insert;
+                Action::SetMode(InputMode::Insert)
+            }
+            _ => {
+                self.mode = InputMode::Normal;
+                Action::None
+            }
+        }
     }
 }
