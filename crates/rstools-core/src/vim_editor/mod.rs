@@ -4,18 +4,18 @@ pub mod history;
 use std::cell::Cell;
 
 use buffer::{
-    char_class, find_char_backward, find_char_forward, find_till_backward, find_till_forward,
-    find_word_backward, find_word_end, find_word_forward, CharClass, TextBuffer,
+    CharClass, TextBuffer, char_class, find_char_backward, find_char_forward, find_till_backward,
+    find_till_forward, find_word_backward, find_word_end, find_word_forward,
 };
 use history::History;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Color, Style},
     text::{Line, Span},
     widgets::Paragraph,
-    Frame,
 };
 
 // ── Vim modes ────────────────────────────────────────────────────────
@@ -2290,7 +2290,7 @@ mod tests {
     fn test_visual_inner_word_yank() {
         let mut ed = VimEditor::from_text("hello world");
         ed.buffer.cursor_col = 0; // on 'h'
-                                  // v i w y  — visual inner word yank
+        // v i w y  — visual inner word yank
         ed.handle_key(key('v'));
         ed.handle_key(key('i'));
         ed.handle_key(key('w'));
