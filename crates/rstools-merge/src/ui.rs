@@ -185,14 +185,14 @@ fn render_binary_content(frame: &mut Frame, area: Rect, path: &str, focused: boo
             Style::default().fg(Color::Yellow),
         )),
         Line::from(""),
-        Line::from("Use these keys:"),
+        Line::from("Accept changes with:"),
         Line::from(vec![
             Span::styled("co", Style::default().fg(Color::Cyan)),
-            Span::raw(" choose ours"),
+            Span::raw(" accept ours"),
         ]),
         Line::from(vec![
             Span::styled("ct", Style::default().fg(Color::Cyan)),
-            Span::raw(" choose theirs"),
+            Span::raw(" accept theirs"),
         ]),
         Line::from(""),
         Line::from("Actions are applied with git checkout --ours/--theirs + git add."),
@@ -254,7 +254,10 @@ fn render_text_conflict_content(
     };
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(format!(" Result: {} ", path))
+        .title(format!(
+            " Result: {}  |  Accept: co (ours), ct (theirs), cb (both) ",
+            path
+        ))
         .border_style(Style::default().fg(border_color));
     let inner = block.inner(bottom_area);
     frame.render_widget(block, bottom_area);

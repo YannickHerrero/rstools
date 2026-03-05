@@ -701,7 +701,7 @@ impl Tool for MergeTool {
             HelpEntry::with_section(
                 "Merge Editor",
                 "co / ct / cb",
-                "Apply ours / theirs / both to current hunk",
+                "Accept current hunk: ours / theirs / both",
             ),
             HelpEntry::with_section("Merge Editor", "Ctrl-h", "Move focus to sidebar"),
             HelpEntry::with_section("Merge", ":w", "Save file and stage if fully resolved"),
