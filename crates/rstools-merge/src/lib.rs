@@ -1,3 +1,4 @@
+pub mod conflict;
 pub mod ui;
 
 use std::path::PathBuf;
