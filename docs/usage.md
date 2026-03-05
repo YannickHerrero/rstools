@@ -169,6 +169,42 @@ Section-specific:
 | `yu` / `yp` / `yU` | Copy username / password / URL |
 | `Ctrl-h` | Focus tree panel |
 
+## Merge
+
+### Leader
+
+| Key | Action |
+|-----|--------|
+| `<Space>m` | Switch to Merge tool |
+| `<Space>mr` | Refresh conflicted files |
+
+### Sidebar
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move down / up |
+| `gg` / `G` | Go to top / bottom |
+| `Ctrl-d` / `Ctrl-u` | Half-page down / up |
+| `Enter` | Open selected conflicted file |
+| `Ctrl-l` | Focus merge result panel |
+
+### Text Conflict View
+
+| Key | Action |
+|-----|--------|
+| `Ctrl-d` / `Ctrl-u` | Next / previous conflict hunk |
+| `co` / `ct` / `cb` | Apply ours / theirs / both (ours then theirs) |
+| `Ctrl-h` | Focus sidebar |
+| `:w` | Save file and auto-stage if markers are gone |
+| `:wq` | Save and close tool |
+
+### Binary Conflict View
+
+| Key | Action |
+|-----|--------|
+| `co` / `ct` | Choose ours / theirs and stage |
+| `Ctrl-h` | Focus sidebar |
+
 ## Insert Mode
 
 | Key | Action |

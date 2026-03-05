@@ -37,6 +37,7 @@ This is the most important aspect of the project. Every tool MUST follow these r
 - Example groups:
   - `<Space>t` — Todo
   - `<Space>h` — HTTP
+  - `<Space>m` — Merge
   - `<Space>f` — Find (telescope)
   - `<Space>e` — Toggle HTTP explorer sidebar
   - `<Space>q` — Quit/Session
@@ -256,6 +257,29 @@ These MUST be consistent across ALL tools:
   - `s` — Search/Save group
   - `ss` — Save note
   - `sg` — Grep note contents
+
+### Merge (`rstools-merge`)
+- Data source: current git repository (no SQLite tables)
+- Sidebar: conflicted files from unmerged index entries (`DD`, `AU`, `UD`, `UA`, `DU`, `AA`, `UU`)
+- Layout: sidebar (40 chars) + 3-pane conflict view (OURS/THEIRS top, editable RESULT bottom)
+- Text conflict workflow:
+  - `Ctrl-d` / `Ctrl-u` — next / previous conflict hunk
+  - `co` / `ct` / `cb` — choose ours / theirs / both (ours then theirs)
+  - `:w` — save file; auto-stage with `git add` when no conflict markers remain
+  - `:wq` — save and close tool
+- Binary conflict workflow:
+  - `co` / `ct` — resolve via `git checkout --ours/--theirs -- <file>` then `git add`
+- Keybinds (Normal mode, sidebar focused):
+  - `j/k` — move up/down
+  - `gg` / `G` — go to top / bottom
+  - `Ctrl-d` / `Ctrl-u` — half-page down / up
+  - `Enter` — open selected conflict
+  - `Ctrl-l` — focus content panel
+- Keybinds (Normal mode, content focused):
+  - `Ctrl-h` — focus sidebar
+  - `Ctrl-d` / `Ctrl-u` — navigate hunks (text conflicts)
+- Which-key (`<Space>m`):
+  - `r` — Refresh conflicted files
 
 ## Commit Conventions
 

@@ -18,6 +18,7 @@ The entire UX is modeled after neovim with modal editing, hjkl navigation, leade
 | Todo | Fast task list with vim navigation, filtering, and CRUD |
 | HTTP | API client with folder/query explorer, request editor, response viewer |
 | KeePass | Read-only KDBX4 vault browser with PIN quick access and secure clipboard |
+| Merge | Merge conflict resolver with sidebar and 3-pane hunk workflow |
 | Notes | Plain text notes with tree sidebar and vim modes (Normal/Insert/Visual) |
 
 ## Screenshots
@@ -99,6 +100,7 @@ This uses an isolated database at `./.demo/rstools-demo.db` and does not touch y
 - Shared fuzzy finder (telescope-style) across tools.
 - Local SQLite storage at `~/.local/share/rstools/rstools.db`.
 - HTTP explorer with nested folders, reusable requests, and pretty JSON responses.
+- Merge conflict resolver with hunk-based choose-ours/theirs/both workflow.
 - KeePass viewer with auto-lock and clipboard auto-clear for sensitive fields.
 
 ## Usage Guides
@@ -124,6 +126,7 @@ Detailed guides were moved to keep this README compact:
 - Todo: [Todo usage in docs](docs/usage.md#todo)
 - HTTP: [HTTP usage in docs](docs/usage.md#http)
 - KeePass: [KeePass usage in docs](docs/usage.md#keepass)
+- Merge: [Merge usage in docs](docs/usage.md#merge)
 - Notes: [Notes usage in docs](docs/usage.md#notes)
 
 </details>
