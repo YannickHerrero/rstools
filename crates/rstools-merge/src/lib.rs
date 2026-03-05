@@ -1,12 +1,17 @@
 pub mod conflict;
 pub mod ui;
 
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::{layout::Rect, widgets::ListState, Frame};
+use ratatui::{
+    layout::{Constraint, Layout, Rect},
+    widgets::ListState,
+    Frame,
+};
 use rstools_core::{
     help_popup::HelpEntry,
     keybinds::{process_normal_key, Action, InputMode, KeyState},
@@ -18,7 +23,7 @@ use rstools_core::{
 use rusqlite::Connection;
 
 use crate::conflict::{
-    apply_hunk_choice, has_conflict_markers, hunk_preview, parse_conflicts, HunkChoice,
+    apply_hunk_choice, has_conflict_markers, hunk_preview, parse_conflicts, HunkChoice, HunkPreview,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +51,8 @@ pub struct MergeTool {
     editor: VimEditor,
     drafts: HashMap<String, String>,
     current_hunk: usize,
-    preview_scroll: u16,
+    preview_scroll: Cell<u16>,
+    max_preview_scroll: Cell<u16>,
     pending_c_action: bool,
     notification: Option<String>,
 }
@@ -65,7 +71,8 @@ impl MergeTool {
             editor: VimEditor::new(),
             drafts: HashMap::new(),
             current_hunk: 0,
-            preview_scroll: 0,
+            preview_scroll: Cell::new(0),
+            max_preview_scroll: Cell::new(0),
             pending_c_action: false,
             notification: None,
         };
@@ -197,7 +204,7 @@ impl MergeTool {
                     self.editor.set_text(&text);
                     self.editor.mark_clean();
                     self.current_hunk = 0;
-                    self.preview_scroll = 0;
+                    self.preview_scroll.set(0);
                     self.sync_hunk_state();
                     self.mode = InputMode::Normal;
                 }
@@ -205,7 +212,7 @@ impl MergeTool {
             ConflictKind::Binary => {
                 self.editor.set_text("");
                 self.current_hunk = 0;
-                self.preview_scroll = 0;
+                self.preview_scroll.set(0);
                 self.mode = InputMode::Normal;
             }
         }
@@ -345,7 +352,7 @@ impl MergeTool {
             return;
         }
         self.current_hunk = (self.current_hunk + 1).min(parsed.hunks.len() - 1);
-        self.preview_scroll = 0;
+        self.preview_scroll.set(0);
         self.sync_hunk_state();
     }
 
@@ -355,7 +362,7 @@ impl MergeTool {
             return;
         }
         self.current_hunk = self.current_hunk.saturating_sub(1);
-        self.preview_scroll = 0;
+        self.preview_scroll.set(0);
         self.sync_hunk_state();
     }
 
@@ -368,16 +375,43 @@ impl MergeTool {
         self.editor.set_text(&next);
         self.editor.mark_clean();
         self.save_current_draft();
-        self.preview_scroll = 0;
+        self.preview_scroll.set(0);
         self.sync_hunk_state();
     }
 
     fn scroll_preview_down(&mut self, lines: u16) {
-        self.preview_scroll = self.preview_scroll.saturating_add(lines);
+        let next = self
+            .preview_scroll
+            .get()
+            .saturating_add(lines)
+            .min(self.max_preview_scroll.get());
+        self.preview_scroll.set(next);
     }
 
     fn scroll_preview_up(&mut self, lines: u16) {
-        self.preview_scroll = self.preview_scroll.saturating_sub(lines);
+        self.preview_scroll
+            .set(self.preview_scroll.get().saturating_sub(lines));
+    }
+
+    fn update_preview_scroll_bounds(&self, area: Rect, preview: Option<&HunkPreview>) {
+        let Some(preview) = preview else {
+            self.max_preview_scroll.set(0);
+            self.preview_scroll.set(0);
+            return;
+        };
+
+        let [top_area, _bottom_area] =
+            Layout::vertical([Constraint::Percentage(40), Constraint::Percentage(60)]).areas(area);
+
+        let hunk_inner_height = top_area.height.saturating_sub(2);
+        let body_len = preview.ours.len().max(preview.theirs.len());
+        let total_lines = preview.before.len() + 1 + body_len + 1 + preview.after.len();
+        let max_scroll = (total_lines as u16).saturating_sub(hunk_inner_height);
+
+        self.max_preview_scroll.set(max_scroll);
+        if self.preview_scroll.get() > max_scroll {
+            self.preview_scroll.set(max_scroll);
+        }
     }
 
     fn handle_sidebar_normal_key(&mut self, key: KeyEvent) -> Action {
@@ -740,6 +774,11 @@ impl Tool for MergeTool {
             None
         };
 
+        let preview_ref = hunk_info
+            .as_ref()
+            .and_then(|(_, _, preview)| preview.as_ref());
+        self.update_preview_scroll_bounds(area, preview_ref);
+
         let in_git_repo = self.repo_root.is_some();
 
         ui::render_merge_tool(
@@ -754,7 +793,7 @@ impl Tool for MergeTool {
             &self.editor,
             hunk_info,
             self.notification.as_deref(),
-            self.preview_scroll,
+            self.preview_scroll.get(),
         );
     }
 

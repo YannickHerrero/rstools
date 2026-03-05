@@ -320,10 +320,13 @@ fn render_hunk_pane(
         )));
     }
 
+    let max_scroll = (lines.len() as u16).saturating_sub(inner.height);
+    let clamped_scroll = scroll.min(max_scroll);
+
     frame.render_widget(
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
-            .scroll((scroll, 0)),
+            .scroll((clamped_scroll, 0)),
         inner,
     );
 }
