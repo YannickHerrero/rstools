@@ -720,10 +720,13 @@ impl Tool for MergeTool {
             None
         };
 
+        let in_git_repo = self.repo_root.is_some();
+
         ui::render_merge_tool(
             frame,
             area,
             &self.files,
+            in_git_repo,
             self.list_state.selected(),
             self.sidebar_focused,
             self.active_file.as_deref(),

@@ -15,6 +15,7 @@ pub fn render_merge_tool(
     frame: &mut Frame,
     area: Rect,
     files: &[ConflictFile],
+    in_git_repo: bool,
     selected: Option<usize>,
     sidebar_focused: bool,
     active_file: Option<&str>,
@@ -37,7 +38,14 @@ pub fn render_merge_tool(
         height: area.height,
     };
 
-    render_sidebar(frame, sidebar_area, files, selected, sidebar_focused);
+    render_sidebar(
+        frame,
+        sidebar_area,
+        files,
+        in_git_repo,
+        selected,
+        sidebar_focused,
+    );
 
     match (active_file, active_kind) {
         (Some(path), Some(ConflictKind::Text)) => render_text_conflict_content(
@@ -51,7 +59,7 @@ pub fn render_merge_tool(
         (Some(path), Some(ConflictKind::Binary)) => {
             render_binary_content(frame, content_area, path, !sidebar_focused)
         }
-        _ => render_empty_content(frame, content_area),
+        _ => render_empty_content(frame, content_area, in_git_repo),
     }
 
     if let Some(message) = notification {
@@ -63,6 +71,7 @@ fn render_sidebar(
     frame: &mut Frame,
     area: Rect,
     files: &[ConflictFile],
+    in_git_repo: bool,
     selected: Option<usize>,
     focused: bool,
 ) {
@@ -78,8 +87,13 @@ fn render_sidebar(
         .border_style(Style::default().fg(border_color));
 
     let items: Vec<ListItem> = if files.is_empty() {
+        let empty_message = if in_git_repo {
+            "No merge conflicts"
+        } else {
+            "Not a git repository"
+        };
         vec![ListItem::new(Line::from(Span::styled(
-            "No unmerged files",
+            empty_message,
             Style::default().fg(Color::DarkGray),
         )))]
     } else {
@@ -124,7 +138,7 @@ fn render_sidebar(
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-fn render_empty_content(frame: &mut Frame, area: Rect) {
+fn render_empty_content(frame: &mut Frame, area: Rect, in_git_repo: bool) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Merge View ")
@@ -132,12 +146,21 @@ fn render_empty_content(frame: &mut Frame, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let lines = vec![
-        Line::from("Select a conflicted file from the sidebar."),
-        Line::from(""),
-        Line::from("Top panes show hunk context and side-by-side choices."),
-        Line::from("Bottom pane is a full editable merge result."),
-    ];
+    let lines = if in_git_repo {
+        vec![
+            Line::from("No merge conflicts found in this repository."),
+            Line::from(""),
+            Line::from("Once conflicts exist, select a file from the sidebar."),
+            Line::from("Top panes show hunk context and side-by-side choices."),
+            Line::from("Bottom pane is a full editable merge result."),
+        ]
+    } else {
+        vec![
+            Line::from("Current folder is not a git repository."),
+            Line::from(""),
+            Line::from("Open rstools inside a git repo to use Merge."),
+        ]
+    };
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
