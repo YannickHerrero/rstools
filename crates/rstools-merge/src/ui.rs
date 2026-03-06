@@ -254,14 +254,45 @@ fn render_text_conflict_content(
     };
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(format!(
-            " Result: {}  |  Accept: co (ours), ct (theirs), cb (both) ",
-            path
-        ))
+        .title(format!(" Result: {} ", path))
         .border_style(Style::default().fg(border_color));
     let inner = block.inner(bottom_area);
     frame.render_widget(block, bottom_area);
-    editor.render(frame, inner, focused);
+
+    if inner.height < 2 {
+        editor.render(frame, inner, focused);
+        return;
+    }
+
+    let [hint_area, editor_area] =
+        Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
+
+    let hint = Line::from(vec![
+        Span::styled("Accept hunk: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            "co",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" ours  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            "ct",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" theirs  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            "cb",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" both", Style::default().fg(Color::DarkGray)),
+    ]);
+    frame.render_widget(Paragraph::new(hint), hint_area);
+    editor.render(frame, editor_area, focused);
 }
 
 fn render_hunk_pane(
