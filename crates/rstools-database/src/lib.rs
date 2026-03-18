@@ -791,7 +791,9 @@ impl DatabaseTool {
         // Check for focus switch back to sidebar
         match key.code {
             KeyCode::Char('h') | KeyCode::Left
-                if key.modifiers == KeyModifiers::NONE && !self.table_view.is_filtering() =>
+                if key.modifiers == KeyModifiers::NONE
+                    && !self.table_view.is_filtering()
+                    && self.table_view.selected_col == 0 =>
             {
                 self.focus = Focus::Sidebar;
                 return Action::None;

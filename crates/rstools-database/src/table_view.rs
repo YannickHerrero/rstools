@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::driver::{ColumnInfo, FilterOp, QueryFilter, QueryResult, SortDirection};
@@ -29,7 +31,7 @@ pub struct TableView {
     pub sort_column: Option<usize>,
     pub sort_direction: SortDirection,
     pub filters: Vec<QueryFilter>,
-    pub scroll_offset_x: usize,
+    pub scroll_offset_x: Cell<usize>,
     // Filter input
     filter_input: Option<FilterInput>,
 }
@@ -52,7 +54,7 @@ impl TableView {
             sort_column: None,
             sort_direction: SortDirection::Asc,
             filters: Vec::new(),
-            scroll_offset_x: 0,
+            scroll_offset_x: Cell::new(0),
             filter_input: None,
         }
     }
@@ -68,7 +70,7 @@ impl TableView {
         self.sort_column = None;
         self.sort_direction = SortDirection::Asc;
         self.filters.clear();
-        self.scroll_offset_x = 0;
+        self.scroll_offset_x.set(0);
         self.filter_input = None;
     }
 
@@ -312,11 +314,11 @@ impl TableView {
     }
 
     fn adjust_scroll_x(&mut self) {
-        // Keep selected column visible (simple logic)
-        if self.selected_col < self.scroll_offset_x {
-            self.scroll_offset_x = self.selected_col;
+        let scroll = self.scroll_offset_x.get();
+        if self.selected_col < scroll {
+            self.scroll_offset_x.set(self.selected_col);
         }
-        // We'll handle the "too far right" case in rendering
+        // Right-edge adjustment happens in render where viewport width is known
     }
 
     pub fn filter_text(&self) -> Option<&str> {

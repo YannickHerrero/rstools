@@ -235,8 +235,11 @@ fn render_table_view(tv: &TableView, focused: bool, frame: &mut Frame, area: Rec
     // Calculate column widths
     let col_widths = calculate_column_widths(tv, inner.width as usize);
 
-    // Determine visible columns based on scroll offset
-    let visible_cols = visible_column_range(tv, &col_widths, inner.width as usize);
+    // Ensure selected column is visible, adjusting horizontal scroll if needed
+    let available = inner.width as usize;
+    let scroll_x = ensure_col_visible(tv.selected_col, tv.scroll_offset_x.get(), &col_widths, available);
+    tv.scroll_offset_x.set(scroll_x);
+    let visible_cols = visible_column_range(scroll_x, &col_widths, available);
 
     // Header
     let header_cells: Vec<Cell> = visible_cols
@@ -423,12 +426,44 @@ fn calculate_column_widths(tv: &TableView, _available_width: usize) -> Vec<usize
     widths
 }
 
+/// Adjust scroll offset so that `selected` is within the visible column range.
+fn ensure_col_visible(
+    selected: usize,
+    current_scroll: usize,
+    col_widths: &[usize],
+    available_width: usize,
+) -> usize {
+    if col_widths.is_empty() {
+        return 0;
+    }
+    let visible = visible_column_range(current_scroll, col_widths, available_width);
+    if visible.contains(&selected) {
+        return current_scroll;
+    }
+    if selected < current_scroll {
+        return selected;
+    }
+    // Selected column is to the right — walk backwards to find the start
+    // that makes it the rightmost visible column.
+    let mut total = 0;
+    let mut start = selected;
+    for i in (0..=selected).rev() {
+        total += col_widths[i];
+        if total > available_width {
+            start = i + 1;
+            break;
+        }
+        start = i;
+    }
+    start
+}
+
 fn visible_column_range(
-    tv: &TableView,
+    scroll_x: usize,
     col_widths: &[usize],
     available_width: usize,
 ) -> std::ops::Range<usize> {
-    let start = tv.scroll_offset_x.min(col_widths.len().saturating_sub(1));
+    let start = scroll_x.min(col_widths.len().saturating_sub(1));
     let mut total = 0;
     let mut end = start;
     for i in start..col_widths.len() {
