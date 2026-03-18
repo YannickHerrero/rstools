@@ -21,8 +21,5 @@ keepass = "=0.8.20"
 # System clipboard
 arboard = "3"
 
-# Crypto for PIN-based password encryption
-aes-gcm = "0.10"
-argon2 = "0.5"
-rand = "0.8"
+# Zeroize for secure password handling
 zeroize = { version = "1", features = ["derive"] }
