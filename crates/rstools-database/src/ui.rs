@@ -274,6 +274,7 @@ fn render_table_view(tv: &TableView, focused: bool, frame: &mut Frame, area: Rec
         .iter()
         .enumerate()
         .map(|(row_idx, row)| {
+            let is_selected_row = row_idx == tv.selected_row && focused;
             let cells: Vec<Cell> = visible_cols
                 .clone()
                 .map(|col_idx| {
@@ -290,13 +291,20 @@ fn render_table_view(tv: &TableView, focused: bool, frame: &mut Frame, area: Rec
                     } else {
                         val.to_string()
                     };
-                    Cell::from(display)
+                    let mut cell = Cell::from(display);
+                    if is_selected_row && col_idx == tv.selected_col {
+                        cell = cell.style(
+                            Style::default()
+                                .bg(Color::White)
+                                .fg(Color::Black)
+                                .add_modifier(Modifier::BOLD),
+                        );
+                    }
+                    cell
                 })
                 .collect();
 
-            let style = if row_idx == tv.selected_row && focused {
-                Style::default().bg(SELECTED_BG).fg(Color::Black).add_modifier(Modifier::BOLD)
-            } else if row_idx % 2 == 0 {
+            let style = if row_idx % 2 == 0 {
                 Style::default()
             } else {
                 Style::default().add_modifier(Modifier::DIM)
