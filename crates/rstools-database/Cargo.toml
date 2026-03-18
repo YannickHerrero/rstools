@@ -1,0 +1,26 @@
+[package]
+name = "rstools-database"
+description = "PostgreSQL database browser for rstools with SSH tunnel support"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+rstools-core.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+rusqlite.workspace = true
+chrono.workspace = true
+anyhow.workspace = true
+unicode-width.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+
+# PostgreSQL driver
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1"] }
+tokio-postgres-rustls = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+
+# SSH tunnel
+russh = "0.57"
