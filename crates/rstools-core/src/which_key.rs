@@ -122,6 +122,7 @@ impl WhichKey {
 /// Returns the top-level which-key entries for the hub.
 pub fn hub_leader_entries() -> Vec<WhichKeyEntry> {
     vec![
+        WhichKeyEntry::action("d", "Database"),
         WhichKeyEntry::group("f", "Find"),
         WhichKeyEntry::action("h", "HTTP"),
         WhichKeyEntry::group("k", "KeePass"),

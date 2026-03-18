@@ -17,6 +17,7 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 
 use rstools_core::db;
+use rstools_database::DatabaseTool;
 use rstools_http::HttpTool;
 use rstools_keepass::KeePassTool;
 use rstools_merge::MergeTool;
@@ -77,6 +78,13 @@ fn main() -> Result<()> {
     };
     let merge = MergeTool::new(merge_conn)?;
 
+    let database_conn = if demo_mode {
+        db::open_db_at(&demo_db_path()?)?
+    } else {
+        db::open_db()?
+    };
+    let database = DatabaseTool::new(database_conn)?;
+
     // Build the app
     let mut app = App::new(vec![
         Box::new(todo),
@@ -84,6 +92,7 @@ fn main() -> Result<()> {
         Box::new(keepass),
         Box::new(notes),
         Box::new(merge),
+        Box::new(database),
     ]);
     app.init_db(&conn)?;
 

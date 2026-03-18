@@ -250,6 +250,12 @@ impl App {
                     self.switch_to_tool(idx);
                 }
             }
+            'd' => {
+                // Switch to Database tool
+                if let Some(idx) = self.tools.iter().position(|t| t.name() == "Database") {
+                    self.switch_to_tool(idx);
+                }
+            }
             _ => {}
         }
     }
@@ -279,6 +285,14 @@ impl App {
                     match c {
                         'q' => {
                             self.process_action(Action::Quit);
+                        }
+                        'd' => {
+                            // Switch to Database tool
+                            if let Some(idx) =
+                                self.tools.iter().position(|t| t.name() == "Database")
+                            {
+                                self.switch_to_tool(idx);
+                            }
                         }
                         'f' => {
                             self.open_telescope();
