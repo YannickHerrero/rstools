@@ -9,7 +9,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::driver::SortDirection;
 use crate::table_view::TableView;
-use crate::{DatabaseTool, Focus};
+use crate::{DatabaseTool, Focus, ViewMode};
 
 const SPINNER: &[char] = &['|', '/', '-', '\\'];
 const SELECTED_BG: Color = Color::Gray;
@@ -146,6 +146,13 @@ fn render_sidebar(tool: &DatabaseTool, frame: &mut Frame, area: Rect) {
 // ── Main content ────────────────────────────────────────────────────
 
 fn render_main(tool: &DatabaseTool, frame: &mut Frame, area: Rect) {
+    match tool.view_mode {
+        ViewMode::Browse => render_main_browse(tool, frame, area),
+        ViewMode::Query => render_main_query(tool, frame, area),
+    }
+}
+
+fn render_main_browse(tool: &DatabaseTool, frame: &mut Frame, area: Rect) {
     if tool.active_table.is_none() {
         render_welcome(tool, frame, area);
         return;
@@ -157,6 +164,93 @@ fn render_main(tool: &DatabaseTool, frame: &mut Frame, area: Rect) {
 
     render_table_view(&tool.table_view, tool.focus == Focus::TableView, frame, table_area);
     render_table_status(tool, frame, status_area);
+}
+
+fn render_main_query(tool: &DatabaseTool, frame: &mut Frame, area: Rect) {
+    let [editor_area, results_area, status_area] = Layout::vertical([
+        Constraint::Percentage(35),
+        Constraint::Fill(1),
+        Constraint::Length(1),
+    ])
+    .areas(area);
+
+    // ── Editor panel ────────────────────────────────────────────────
+    let editor_focused = tool.focus == Focus::QueryEditor;
+    let editor_border = if editor_focused {
+        Style::default().fg(Color::Blue)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
+    let editor_block = Block::default()
+        .title(" SQL Query (Enter in results to execute) ")
+        .borders(Borders::ALL)
+        .border_style(editor_border);
+
+    let editor_inner = editor_block.inner(editor_area);
+    frame.render_widget(editor_block, editor_area);
+    tool.query_editor.render(frame, editor_inner, editor_focused);
+
+    // ── Results panel ───────────────────────────────────────────────
+    if let Some(ref err) = tool.query_error {
+        let results_block = Block::default()
+            .title(" Results ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Red));
+        let inner = results_block.inner(results_area);
+        frame.render_widget(results_block, results_area);
+
+        let error_text = Paragraph::new(Line::from(Span::styled(
+            format!("Error: {err}"),
+            Style::default().fg(Color::Red),
+        )));
+        frame.render_widget(error_text, inner);
+    } else if tool.query_results.columns.is_empty() {
+        let results_block = Block::default()
+            .title(" Results ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::DarkGray));
+        let inner = results_block.inner(results_area);
+        frame.render_widget(results_block, results_area);
+
+        let hint = Paragraph::new("Write a query and press Ctrl+Enter to execute")
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center);
+        let [_, centered, _] = Layout::vertical([
+            Constraint::Fill(1),
+            Constraint::Length(1),
+            Constraint::Fill(1),
+        ])
+        .areas(inner);
+        frame.render_widget(hint, centered);
+    } else {
+        render_table_view(
+            &tool.query_results,
+            tool.focus == Focus::QueryResults,
+            frame,
+            results_area,
+        );
+    }
+
+    // ── Status bar ──────────────────────────────────────────────────
+    let row_info = if !tool.query_results.columns.is_empty() {
+        format!(" {} rows returned", tool.query_results.total_count)
+    } else {
+        String::new()
+    };
+
+    let loading = if tool.loading {
+        let spinner = SPINNER[tool.spinner_frame as usize % SPINNER.len()];
+        format!(" {spinner} Executing...")
+    } else {
+        String::new()
+    };
+
+    let line = Line::from(vec![
+        Span::styled(row_info, Style::default().fg(Color::DarkGray)),
+        Span::styled(loading, Style::default().fg(Color::Yellow)),
+    ]);
+    frame.render_widget(Paragraph::new(line), status_area);
 }
 
 fn render_welcome(tool: &DatabaseTool, frame: &mut Frame, area: Rect) {
