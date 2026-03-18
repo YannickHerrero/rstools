@@ -236,6 +236,38 @@ impl PgDriver {
         Ok(columns)
     }
 
+    pub async fn execute_raw(&self, sql: &str) -> Result<QueryResult> {
+        let rows = self
+            .client
+            .query(sql, &[])
+            .await
+?;
+
+        let columns = if let Some(first_row) = rows.first() {
+            first_row
+                .columns()
+                .iter()
+                .map(|col| ColumnInfo {
+                    name: col.name().to_string(),
+                    data_type: col.type_().name().to_string(),
+                    nullable: true,
+                    is_primary_key: false,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        let total_count = rows.len() as i64;
+        let string_rows: Vec<Vec<String>> = rows.iter().map(|row| row_to_strings(row)).collect();
+
+        Ok(QueryResult {
+            columns,
+            rows: string_rows,
+            total_count,
+        })
+    }
+
     pub async fn query(&self, params: &QueryParams) -> Result<QueryResult> {
         let qualified_table = format!(
             "{}.{}",
