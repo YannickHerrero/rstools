@@ -12,6 +12,7 @@ use crate::table_view::TableView;
 use crate::{DatabaseTool, Focus};
 
 const SPINNER: &[char] = &['|', '/', '-', '\\'];
+const SELECTED_BG: Color = Color::Gray;
 
 pub fn render(tool: &DatabaseTool, frame: &mut Frame, area: Rect) {
     let sidebar_width = area.width.min(30);
@@ -121,7 +122,7 @@ fn render_sidebar(tool: &DatabaseTool, frame: &mut Frame, area: Rect) {
 
                 let style = if selected {
                     Style::default()
-                        .bg(Color::Blue)
+                        .bg(Color::DarkGray)
                         .fg(Color::White)
                         .add_modifier(Modifier::BOLD)
                 } else if is_active_conn || is_active_table {
@@ -253,7 +254,7 @@ fn render_table_view(tv: &TableView, focused: bool, frame: &mut Frame, area: Rec
             let selected = i == tv.selected_col && focused;
             let style = if selected {
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
             } else {
                 Style::default().add_modifier(Modifier::BOLD)
@@ -262,7 +263,7 @@ fn render_table_view(tv: &TableView, focused: bool, frame: &mut Frame, area: Rec
         })
         .collect();
 
-    let header = Row::new(header_cells).style(Style::default().bg(Color::DarkGray));
+    let header = Row::new(header_cells).style(Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED));
 
     // Data rows
     let mut rows: Vec<Row> = tv
@@ -291,11 +292,11 @@ fn render_table_view(tv: &TableView, focused: bool, frame: &mut Frame, area: Rec
                 .collect();
 
             let style = if row_idx == tv.selected_row && focused {
-                Style::default().bg(Color::Blue).fg(Color::White)
+                Style::default().bg(SELECTED_BG).fg(Color::Black).add_modifier(Modifier::BOLD)
             } else if row_idx % 2 == 0 {
                 Style::default()
             } else {
-                Style::default().bg(Color::Rgb(30, 30, 30))
+                Style::default().add_modifier(Modifier::DIM)
             };
 
             Row::new(cells).style(style)
@@ -309,8 +310,8 @@ fn render_table_view(tv: &TableView, focused: bool, frame: &mut Frame, area: Rec
         let selected = load_more_idx == tv.selected_row && focused;
         let style = if selected {
             Style::default()
+                .bg(SELECTED_BG)
                 .fg(Color::Black)
-                .bg(Color::Yellow)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
