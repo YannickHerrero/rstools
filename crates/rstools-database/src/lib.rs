@@ -13,6 +13,7 @@ use rstools_core::help_popup::HelpEntry;
 use rstools_core::keybinds::{Action, InputMode, KeyState, process_normal_key};
 use rstools_core::telescope::TelescopeItem;
 use rstools_core::tool::Tool;
+use rstools_core::vim_editor::{EditorAction, VimEditor, VimMode};
 use rstools_core::which_key::WhichKeyEntry;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -44,6 +45,7 @@ enum DbCommand {
         table: String,
     },
     Query(QueryParams),
+    ExecuteRaw(String),
     TestConnection {
         host: String,
         port: u16,
@@ -62,6 +64,7 @@ enum DbResult {
     Tables(Vec<TableInfo>),
     Columns(Vec<ColumnInfo>),
     QueryResult(QueryResult),
+    RawQueryResult(QueryResult),
     TestResult(String),
     Error(String),
     Disconnected,
@@ -182,6 +185,22 @@ impl DbExecutor {
                                     result_tx.send(DbResult::Error("Not connected".to_string()));
                             }
                         }
+                        DbCommand::ExecuteRaw(sql) => {
+                            if let Some(ref d) = driver {
+                                match d.execute_raw(&sql).await {
+                                    Ok(qr) => {
+                                        let _ = result_tx.send(DbResult::RawQueryResult(qr));
+                                    }
+                                    Err(e) => {
+                                        let _ = result_tx
+                                            .send(DbResult::Error(format!("RawQuery: {e:#}")));
+                                    }
+                                }
+                            } else {
+                                let _ =
+                                    result_tx.send(DbResult::Error("Not connected".to_string()));
+                            }
+                        }
                         DbCommand::TestConnection {
                             host,
                             port,
@@ -250,6 +269,14 @@ impl DbExecutor {
     }
 }
 
+// ── View mode ───────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ViewMode {
+    Browse,
+    Query,
+}
+
 // ── Focus state ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -258,6 +285,8 @@ enum Focus {
     TableView,
     ConnectionForm,
     PinPrompt,
+    QueryEditor,
+    QueryResults,
 }
 
 /// PIN prompt for decrypting connection passwords.
@@ -291,6 +320,7 @@ pub struct DatabaseTool {
     mode: InputMode,
     key_state: KeyState,
     focus: Focus,
+    view_mode: ViewMode,
 
     // Sidebar state
     connections: Vec<DbConnection>,
@@ -303,9 +333,14 @@ pub struct DatabaseTool {
     active_connection_id: Option<i64>,
     connected_version: Option<String>,
 
-    // Table view
+    // Table view (browse mode)
     table_view: TableView,
     active_table: Option<(String, String)>, // (schema, table)
+
+    // Query mode
+    query_editor: VimEditor,
+    query_results: TableView,
+    query_error: Option<String>,
 
     // Connection form
     connection_form: Option<ConnectionForm>,
@@ -336,6 +371,7 @@ impl DatabaseTool {
             mode: InputMode::Normal,
             key_state: KeyState::default(),
             focus: Focus::Sidebar,
+            view_mode: ViewMode::Browse,
             connections,
             tables: Vec::new(),
             sidebar_entries: Vec::new(),
@@ -345,6 +381,9 @@ impl DatabaseTool {
             connected_version: None,
             table_view: TableView::new(),
             active_table: None,
+            query_editor: VimEditor::new(),
+            query_results: TableView::new(),
+            query_error: None,
             connection_form: None,
             editing_connection_id: None,
             pin_prompt: None,
@@ -606,6 +645,12 @@ impl DatabaseTool {
                     }
                     self.focus = Focus::TableView;
                 }
+                DbResult::RawQueryResult(qr) => {
+                    self.loading = false;
+                    self.query_error = None;
+                    self.query_results.set_data(qr);
+                    self.focus = Focus::QueryResults;
+                }
                 DbResult::TestResult(version) => {
                     self.loading = false;
                     if let Some(ref mut form) = self.connection_form {
@@ -621,6 +666,13 @@ impl DatabaseTool {
                                 Some(Err(msg.strip_prefix("Test: ").unwrap_or(&msg).to_string()));
                             continue;
                         }
+                    }
+                    // Route raw query errors to query_error
+                    if msg.starts_with("RawQuery:") {
+                        self.query_error = Some(
+                            msg.strip_prefix("RawQuery: ").unwrap_or(&msg).to_string(),
+                        );
+                        continue;
                     }
                     self.error_message = Some(msg);
                     self.error_shown_at = Some(Instant::now());
@@ -765,11 +817,18 @@ impl DatabaseTool {
                 Action::None
             }
             Action::None => {
-                // Handle 'l' to switch focus to table view
+                // Handle 'l' to switch focus to table view or query editor
                 match key.code {
                     KeyCode::Char('l') | KeyCode::Right => {
-                        if self.active_table.is_some() {
-                            self.focus = Focus::TableView;
+                        match self.view_mode {
+                            ViewMode::Browse => {
+                                if self.active_table.is_some() {
+                                    self.focus = Focus::TableView;
+                                }
+                            }
+                            ViewMode::Query => {
+                                self.focus = Focus::QueryEditor;
+                            }
                         }
                         Action::None
                     }
@@ -807,6 +866,90 @@ impl DatabaseTool {
             TableAction::LoadMore => self.load_more_rows(),
         }
         Action::None
+    }
+
+    fn handle_query_editor_key(&mut self, key: KeyEvent) -> Action {
+        // Normal-mode special keys
+        if self.query_editor.mode == VimMode::Normal {
+            match key.code {
+                KeyCode::Char('j') | KeyCode::Down
+                    if key.modifiers == KeyModifiers::NONE
+                        && self.query_editor.buffer.cursor_row
+                            >= self.query_editor.buffer.line_count().saturating_sub(1) =>
+                {
+                    self.focus = Focus::QueryResults;
+                    return Action::None;
+                }
+                KeyCode::Tab => {
+                    self.focus = Focus::QueryResults;
+                    return Action::None;
+                }
+                KeyCode::Char('h') | KeyCode::Left
+                    if key.modifiers == KeyModifiers::NONE
+                        && self.query_editor.buffer.cursor_col == 0 =>
+                {
+                    self.focus = Focus::Sidebar;
+                    return Action::None;
+                }
+                _ => {}
+            }
+        }
+
+        let action = self.query_editor.handle_key(key);
+        match action {
+            EditorAction::ModeChanged(VimMode::Insert) => {
+                self.mode = InputMode::Insert;
+                Action::SetMode(InputMode::Insert)
+            }
+            EditorAction::ModeChanged(VimMode::Normal) => {
+                self.mode = InputMode::Normal;
+                Action::SetMode(InputMode::Normal)
+            }
+            _ => Action::None,
+        }
+    }
+
+    fn handle_query_results_key(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Enter => {
+                self.execute_query();
+                return Action::None;
+            }
+            KeyCode::Char('k') | KeyCode::Up
+                if key.modifiers == KeyModifiers::NONE
+                    && self.query_results.selected_row == 0 =>
+            {
+                self.focus = Focus::QueryEditor;
+                return Action::None;
+            }
+            KeyCode::Tab => {
+                self.focus = Focus::QueryEditor;
+                return Action::None;
+            }
+            KeyCode::Char('h') | KeyCode::Left
+                if key.modifiers == KeyModifiers::NONE
+                    && !self.query_results.is_filtering()
+                    && self.query_results.selected_col == 0 =>
+            {
+                self.focus = Focus::Sidebar;
+                return Action::None;
+            }
+            _ => {}
+        }
+
+        self.query_results.handle_key(key);
+        Action::None
+    }
+
+    fn execute_query(&mut self) {
+        let sql = self.query_editor.text().trim().to_string();
+        if sql.is_empty() {
+            return;
+        }
+        self.query_error = None;
+        self.query_results.reset();
+        self.loading = true;
+        self.executor.send(DbCommand::ExecuteRaw(sql));
     }
 
     fn handle_connection_form_key(&mut self, key: KeyEvent) -> Action {
@@ -906,6 +1049,8 @@ impl Tool for DatabaseTool {
             WhichKeyEntry::action("a", "Add connection"),
             WhichKeyEntry::action("e", "Edit connection"),
             WhichKeyEntry::action("D", "Disconnect"),
+            WhichKeyEntry::action("q", "SQL query editor"),
+            WhichKeyEntry::action("b", "Browse tables"),
         ]
     }
 
@@ -938,6 +1083,11 @@ impl Tool for DatabaseTool {
             HelpEntry::with_section("Database", "Enter", "Connect / select table"),
             HelpEntry::with_section("Database", "D", "Disconnect"),
             HelpEntry::with_section("Database", "h/l", "Switch sidebar/table focus"),
+            HelpEntry::with_section("Database", "<Space>q", "SQL query editor"),
+            HelpEntry::with_section("Database", "<Space>b", "Browse tables"),
+            HelpEntry::with_section("Query Editor", "j/Tab", "Focus results"),
+            HelpEntry::with_section("Query Editor", "Enter", "Execute query (in results)"),
+            HelpEntry::with_section("Query Editor", "k", "Focus editor (from results)"),
             HelpEntry::with_section("Table View", "j/k", "Navigate rows"),
             HelpEntry::with_section("Table View", "h/l", "Scroll columns"),
             HelpEntry::with_section("Table View", "n/p", "Next/previous page"),
@@ -967,6 +1117,8 @@ impl Tool for DatabaseTool {
             Focus::ConnectionForm => self.handle_connection_form_key(key),
             Focus::Sidebar => self.handle_sidebar_key(key),
             Focus::TableView => self.handle_table_view_key(key),
+            Focus::QueryEditor => self.handle_query_editor_key(key),
+            Focus::QueryResults => self.handle_query_results_key(key),
         }
     }
 
@@ -1037,6 +1189,22 @@ impl Tool for DatabaseTool {
                 }
                 Some(Action::None)
             }
+            'q' => {
+                if self.active_connection_id.is_some() {
+                    self.view_mode = ViewMode::Query;
+                    self.focus = Focus::QueryEditor;
+                }
+                Some(Action::None)
+            }
+            'b' => {
+                self.view_mode = ViewMode::Browse;
+                if self.active_table.is_some() {
+                    self.focus = Focus::TableView;
+                } else {
+                    self.focus = Focus::Sidebar;
+                }
+                Some(Action::None)
+            }
             _ => None,
         }
     }
@@ -1054,6 +1222,22 @@ impl Tool for DatabaseTool {
 
     fn handle_command(&mut self, cmd: &str) -> bool {
         match cmd {
+            "sql" | "query" => {
+                if self.active_connection_id.is_some() {
+                    self.view_mode = ViewMode::Query;
+                    self.focus = Focus::QueryEditor;
+                }
+                true
+            }
+            "browse" => {
+                self.view_mode = ViewMode::Browse;
+                if self.active_table.is_some() {
+                    self.focus = Focus::TableView;
+                } else {
+                    self.focus = Focus::Sidebar;
+                }
+                true
+            }
             "disconnect" | "dc" => {
                 if self.active_connection_id.is_some() {
                     self.executor.send(DbCommand::Disconnect);
@@ -1078,6 +1262,17 @@ impl Tool for DatabaseTool {
         if self.focus == Focus::ConnectionForm {
             if let Some(ref mut form) = self.connection_form {
                 form.paste(text);
+            }
+        } else if self.focus == Focus::QueryEditor {
+            self.query_editor.paste_text(text);
+            match self.query_editor.mode {
+                VimMode::Insert => {
+                    self.mode = InputMode::Insert;
+                    return Action::SetMode(InputMode::Insert);
+                }
+                _ => {
+                    self.mode = InputMode::Normal;
+                }
             }
         }
         Action::None
