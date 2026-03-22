@@ -40,6 +40,8 @@ pub enum InputPrompt {
         buffer: String,
         file_path: String,
         error: Option<String>,
+        /// When true, focus is on the "Paste" button instead of the text input.
+        paste_focused: bool,
     },
     /// PIN entry for unlocking a remembered vault.
     PinInput {
@@ -182,6 +184,7 @@ impl KeePassTool {
                             buffer: String::new(),
                             file_path: path,
                             error: Some("PIN expired. Please enter your master password.".into()),
+                            paste_focused: false,
                         });
                         return;
                     }
@@ -194,6 +197,7 @@ impl KeePassTool {
             buffer: String::new(),
             file_path: path,
             error: None,
+            paste_focused: false,
         });
     }
 
@@ -488,11 +492,34 @@ impl KeePassTool {
             InputPrompt::MasterPassword {
                 mut buffer,
                 file_path,
+                paste_focused,
                 ..
             } => match key.code {
                 KeyCode::Esc => {
                     buffer.zeroize();
                     // Prompt dismissed
+                }
+                KeyCode::Tab | KeyCode::BackTab => {
+                    self.input_prompt = Some(InputPrompt::MasterPassword {
+                        buffer,
+                        file_path,
+                        error: None,
+                        paste_focused: !paste_focused,
+                    });
+                }
+                KeyCode::Enter if paste_focused => {
+                    // Paste from clipboard
+                    if let Some(ref mut cb) = self.clipboard {
+                        if let Ok(text) = cb.get_text() {
+                            buffer.push_str(&text);
+                        }
+                    }
+                    self.input_prompt = Some(InputPrompt::MasterPassword {
+                        buffer,
+                        file_path,
+                        error: None,
+                        paste_focused: false,
+                    });
                 }
                 KeyCode::Enter => {
                     let result = self.open_vault_with_password(&file_path, &buffer);
@@ -502,24 +529,27 @@ impl KeePassTool {
                             buffer: String::new(),
                             file_path,
                             error: Some(e),
+                            paste_focused: false,
                         });
                     }
                     // If successful, input_prompt is set to PinSetup in open_vault_with_password
                 }
-                KeyCode::Char(c) => {
+                KeyCode::Char(c) if !paste_focused => {
                     buffer.push(c);
                     self.input_prompt = Some(InputPrompt::MasterPassword {
                         buffer,
                         file_path,
                         error: None,
+                        paste_focused: false,
                     });
                 }
-                KeyCode::Backspace => {
+                KeyCode::Backspace if !paste_focused => {
                     buffer.pop();
                     self.input_prompt = Some(InputPrompt::MasterPassword {
                         buffer,
                         file_path,
                         error: None,
+                        paste_focused: false,
                     });
                 }
                 _ => {
@@ -527,6 +557,7 @@ impl KeePassTool {
                         buffer,
                         file_path,
                         error: None,
+                        paste_focused,
                     });
                 }
             },
@@ -543,6 +574,7 @@ impl KeePassTool {
                         buffer: String::new(),
                         file_path,
                         error: None,
+                        paste_focused: false,
                     });
                 }
                 KeyCode::Char(c) if c.is_ascii_digit() && buffer.len() < 4 => {

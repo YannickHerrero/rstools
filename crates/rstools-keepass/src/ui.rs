@@ -647,7 +647,8 @@ fn render_input_prompt(frame: &mut Frame, area: Rect, tool: &KeePassTool) {
     };
 
     let popup_width = 50u16.min(area.width.saturating_sub(4));
-    let popup_height = 5u16;
+    let is_master = matches!(prompt, InputPrompt::MasterPassword { .. });
+    let popup_height = if is_master { 7u16 } else { 5u16 };
 
     let vertical = Layout::vertical([Constraint::Length(popup_height)]).flex(Flex::Center);
     let horizontal = Layout::horizontal([Constraint::Length(popup_width)]).flex(Flex::Center);
@@ -672,7 +673,12 @@ fn render_input_prompt(frame: &mut Frame, area: Rect, tool: &KeePassTool) {
     frame.render_widget(block, popup_area);
 
     match prompt {
-        InputPrompt::MasterPassword { buffer, error, .. } => {
+        InputPrompt::MasterPassword {
+            buffer,
+            error,
+            paste_focused,
+            ..
+        } => {
             let mut lines = Vec::new();
 
             if let Some(err) = error {
@@ -684,22 +690,49 @@ fn render_input_prompt(frame: &mut Frame, area: Rect, tool: &KeePassTool) {
 
             // Show dots for each character
             let masked: String = "\u{2022}".repeat(buffer.len());
+            let input_style = if *paste_focused {
+                Style::default().add_modifier(Modifier::DIM)
+            } else {
+                Style::default().add_modifier(Modifier::BOLD)
+            };
             lines.push(Line::from(vec![
-                Span::styled("> ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled("> ", input_style),
                 Span::raw(masked),
+            ]));
+
+            // Blank line + paste button
+            lines.push(Line::from(""));
+            let btn_style = if *paste_focused {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::DIM)
+            };
+            lines.push(Line::from(vec![
+                Span::styled(" [ Paste from clipboard ] ", btn_style),
+                Span::styled(
+                    " Tab to switch",
+                    Style::default().add_modifier(Modifier::DIM),
+                ),
             ]));
 
             let paragraph = Paragraph::new(lines);
             frame.render_widget(paragraph, inner);
 
-            // Place cursor
-            let cursor_x = inner.x + 2 + buffer.len() as u16;
-            let cursor_y = if error.is_some() {
-                inner.y + 1
-            } else {
-                inner.y
-            };
-            frame.set_cursor_position((cursor_x, cursor_y));
+            // Place cursor only when input is focused
+            if !paste_focused {
+                let cursor_x = inner.x + 2 + buffer.len() as u16;
+                let cursor_y = if error.is_some() {
+                    inner.y + 1
+                } else {
+                    inner.y
+                };
+                frame.set_cursor_position((cursor_x, cursor_y));
+            }
         }
         InputPrompt::PinInput { buffer, error, .. } => {
             let mut lines = Vec::new();
